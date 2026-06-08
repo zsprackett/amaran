@@ -75,6 +75,8 @@ Useful commands:
 - `./bin/amaran scene delete <name> --json`
 - `./bin/amaran daemon [start|status|stop]`
 - `./bin/amaran daemon [start|status|stop] --json`
+- `./bin/amaran daemon [install|uninstall]`
+- `./bin/amaran daemon logs [--since <dur>] [--json]`
 - `./bin/amaran ui`
 - `./bin/amaran list`
 - `./bin/amaran probe`
@@ -104,6 +106,19 @@ Implementation notes:
   `~/Library/Application Support/amaran-cli/daemon.json`, keeps CoreBluetooth
   alive, and may reuse a Mesh Proxy connection for repeated commands. Set
   `AMARAN_DAEMON_DISABLE=1` to force the older one-shot helper path.
+- The daemon emits structured logs through Apple unified logging (os.Logger,
+  subsystem `dev.local.bluetooth-probe`, categories `daemon`, `ble`, `command`).
+  stderr is discarded when launched via `open -g`, so unified logging is the
+  source of truth. View it with `./bin/amaran daemon logs` (live `log stream`)
+  or `./bin/amaran daemon logs --since 1h` (`log show`). One-shot CLI invocations
+  still write diagnostics to stderr, which the wrapper captures.
+- `./bin/amaran daemon install` registers a launchd LaunchAgent at
+  `~/Library/LaunchAgents/dev.local.bluetooth-probe.plist` (`RunAtLoad`,
+  `KeepAlive`, `ProcessType Background`) so the daemon runs at login and
+  auto-restarts. It primes the Bluetooth TCC grant by launching the signed
+  bundle once before bootstrapping launchd. `uninstall` bootouts and removes the
+  plist. Because `KeepAlive` would relaunch a shutdown-only daemon, `daemon stop`
+  bootouts the agent when the plist is present instead of just sending shutdown.
 - `./bin/amaran ui` launches `scripts/amaran-tui`, a Textual terminal control
   surface backed by safe CLI JSON output. It should not read or print
   mesh/app/device keys directly. It may auto-install Textual into a private

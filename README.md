@@ -376,6 +376,8 @@ one-shot helper path if the daemon cannot be reached.
 | `./bin/amaran cct <kelvin> [--intensity <0-100>] [--gm <0-20>] [--node <id-or-name>]` | Send Telink CCT. The CLI clamps known fixture-family CCT ranges and reads status only when needed to preserve omitted intensity or supported green-magenta state. |
 | `./bin/amaran gm <0-20> [--node <id-or-name>]` | Send Sidus-style green-magenta correction while preserving current CCT and intensity. `10` is neutral, lower is greener, higher is more magenta. Fails for fixture families without G/M support. |
 | `./bin/amaran daemon [start\|status\|stop] [--json]` | Start, inspect, or stop the local runtime daemon without sending fixture control commands. Runtime commands auto-start it when needed. |
+| `./bin/amaran daemon install \| uninstall [--json]` | Register or remove a launchd LaunchAgent so the daemon runs at login and auto-restarts on crash. `install` primes the macOS Bluetooth permission for the signed bundle on first run. |
+| `./bin/amaran daemon logs [--since <dur>] [--json]` | Stream the daemon's unified logs live (subsystem `dev.local.bluetooth-probe`), or show history with `--since 1h`. `--json` emits `ndjson`. |
 | `./bin/amaran ui` | Open the Textual terminal control surface for fixtures and scenes. |
 
 State and pairing commands manage local state and fixture setup.
@@ -499,4 +501,11 @@ npm run test:cli-wrapper
 If commands fail immediately with `central_state unauthorized`, re-enable
 macOS Bluetooth permission for `BluetoothProbe.app`. Older ad-hoc builds used
 changing `cdhash` requirements, so an existing denied or stale permission entry
-may need to be reset once.
+may need to be reset once. The daemon also logs `Bluetooth permission not
+granted` to the unified log in this case; check `./bin/amaran daemon logs`.
+
+When running as a launchd LaunchAgent (`./bin/amaran daemon install`), the
+Bluetooth permission is attributed to the signed bundle the same way as the
+`open -g` path. `install` primes that grant by launching the bundle once before
+handing off to launchd; if Bluetooth still reports `unauthorized`, grant it in
+System Settings > Privacy & Security > Bluetooth and run `daemon install` again.

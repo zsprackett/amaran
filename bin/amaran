@@ -8,6 +8,10 @@ NODE_ID="${AMARAN_NODE_ID:-}"
 STATE_PATH="${AMARAN_CLI_STATE_PATH:-$HOME/Library/Application Support/amaran-cli/state.json}"
 DAEMON_PORT_FILE="${AMARAN_DAEMON_PORT_FILE:-$HOME/Library/Application Support/amaran-cli/daemon.json}"
 DAEMON_DISABLE="${AMARAN_DAEMON_DISABLE:-0}"
+DAEMON_LABEL="dev.local.bluetooth-probe"
+DAEMON_PLIST="$HOME/Library/LaunchAgents/$DAEMON_LABEL.plist"
+DAEMON_LOG_DIR="$HOME/Library/Logs/amaran"
+DAEMON_LOG_SUBSYSTEM="dev.local.bluetooth-probe"
 ATTENTION_DURATION="${AMARAN_ATTENTION_DURATION:-0}"
 DRY_RUN=0
 VERIFY=0
@@ -16,6 +20,7 @@ JSON=0
 CONFIRM_RESET=0
 INTENSITY_OPT=""
 GM_OPT=""
+SINCE_OPT=""
 NATIVE_CONTROL_SPEC=""
 CAPTURE_STATE_PATH=""
 GATT_ALL_SERVICES=0
@@ -50,7 +55,8 @@ Usage:
   amaran scene list [--json]
   amaran scene show <name> [--json]
   amaran scene delete <name> [--json]
-  amaran daemon [start|status|stop] [--json]
+  amaran daemon [start|status|stop|install|uninstall] [--json]
+  amaran daemon logs [--since <dur>] [--json]
   amaran ui
   amaran monitor [--node <id|name>] [--timeout <sec>] [--json]
   amaran list [--json]
@@ -140,6 +146,12 @@ Runtime daemon:
   Mesh Proxy connection for faster repeated commands. Set
   AMARAN_DAEMON_DISABLE=1 to force the older one-shot helper path.
 
+  For a persistent background daemon, run `amaran daemon install` to register a
+  launchd LaunchAgent that runs at login and auto-restarts on crash. Use
+  `amaran daemon uninstall` to remove it. The daemon logs through the unified
+  logging system (subsystem dev.local.bluetooth-probe); view it with
+  `amaran daemon logs` (live) or `amaran daemon logs --since 1h` (history).
+
 State and pairing:
   doctor         Inspect local state, runtime counters, and control readiness.
   sidus-import   Import a Sidus Link Pro iPad backup into local CLI state. This
@@ -163,7 +175,8 @@ State and pairing:
                  reads live status for selected --node fixtures; --off-node
                  records a fixture as off without requiring a status response.
                  Applying sends direct runtime commands.
-  daemon         Start, inspect, or stop the local runtime daemon.
+  daemon         Start, inspect, stop, install, or uninstall the local runtime
+                 daemon, or stream its logs (daemon logs [--since <dur>]).
   ui             Open a keyboard-friendly terminal control surface for known
                  fixtures and saved scenes. Uses only redacted CLI JSON output.
   monitor        Subscribe to Mesh Proxy notifications for reverse-engineering
@@ -395,6 +408,11 @@ while [[ $# -gt 0 ]]; do
     --gm)
       [[ $# -ge 2 ]] || { echo "amaran: --gm requires a value from 0 to 20" >&2; exit 1; }
       GM_OPT="$2"
+      shift 2
+      ;;
+    --since)
+      [[ $# -ge 2 ]] || { echo "amaran: --since requires a duration (e.g. 1h, 30m)" >&2; exit 1; }
+      SINCE_OPT="$2"
       shift 2
       ;;
     --json)
@@ -4023,6 +4041,19 @@ PY
       fi
       ;;
     stop)
+      # When installed as a LaunchAgent, KeepAlive would relaunch a daemon that
+      # merely received a shutdown request, so bootout instead. It returns at
+      # the next login (or via `amaran daemon install`); uninstall removes it.
+      if [[ -f "$DAEMON_PLIST" ]]; then
+        /bin/launchctl bootout "gui/$(id -u)" "$DAEMON_PLIST" >/dev/null 2>&1 || true
+        daemon_request shutdown >/dev/null 2>&1 || true
+        if [[ "$JSON" == "1" ]]; then
+          printf '{"ok":true,"stopped":true,"managed":"launchd"}\n'
+        else
+          echo "daemon stopped (launchd agent unloaded; returns at next login)"
+        fi
+        return 0
+      fi
       if ! response="$(daemon_request shutdown)"; then
         echo "amaran: daemon is not reachable" >&2
         return 1
@@ -4033,11 +4064,116 @@ PY
         echo "daemon stopped"
       fi
       ;;
+    logs)
+      local predicate="subsystem == \"$DAEMON_LOG_SUBSYSTEM\""
+      if [[ -n "$SINCE_OPT" ]]; then
+        if [[ "$JSON" == "1" ]]; then
+          exec /usr/bin/log show --predicate "$predicate" --last "$SINCE_OPT" --info --debug --style ndjson
+        else
+          exec /usr/bin/log show --predicate "$predicate" --last "$SINCE_OPT" --info --debug --style compact
+        fi
+      else
+        if [[ "$JSON" == "1" ]]; then
+          exec /usr/bin/log stream --predicate "$predicate" --level debug --style ndjson
+        else
+          exec /usr/bin/log stream --predicate "$predicate" --level debug --style compact
+        fi
+      fi
+      ;;
+    install)
+      daemon_install
+      ;;
+    uninstall)
+      daemon_uninstall
+      ;;
     *)
-      echo "amaran: daemon requires start, status, or stop" >&2
+      echo "amaran: daemon requires start, status, stop, logs, install, or uninstall" >&2
       return 1
       ;;
   esac
+}
+
+daemon_install() {
+  local executable="$NATIVE_APP/Contents/MacOS/BluetoothProbe"
+  if [[ ! -x "$executable" ]]; then
+    echo "amaran: $executable is missing; run scripts/build-bluetooth-probe first" >&2
+    return 1
+  fi
+
+  mkdir -p "${DAEMON_PLIST:h}" "$DAEMON_LOG_DIR"
+  mkdir -p "${DAEMON_PORT_FILE:h}"
+  chmod 700 "${DAEMON_PORT_FILE:h}" 2>/dev/null || true
+
+  # First-run Bluetooth permission: launching via `daemon_request` triggers the
+  # existing `open -g` path, so macOS attributes the TCC Bluetooth grant to the
+  # signed bundle (a prompt may appear). Shut that copy down so launchd owns the
+  # single resident daemon instead of racing a second instance for the port.
+  echo "amaran: priming Bluetooth permission (a prompt may appear)..." >&2
+  if daemon_request ping >/dev/null 2>&1; then
+    daemon_request shutdown >/dev/null 2>&1 || true
+  fi
+
+  DAEMON_PLIST="$DAEMON_PLIST" \
+  DAEMON_LABEL="$DAEMON_LABEL" \
+  DAEMON_EXECUTABLE="$executable" \
+  DAEMON_PORT_FILE="$DAEMON_PORT_FILE" \
+  DAEMON_LOG_DIR="$DAEMON_LOG_DIR" \
+  /usr/bin/python3 - <<'PY'
+import os
+import plistlib
+
+plist_path = os.path.expanduser(os.environ["DAEMON_PLIST"])
+log_dir = os.path.expanduser(os.environ["DAEMON_LOG_DIR"])
+plist = {
+    "Label": os.environ["DAEMON_LABEL"],
+    "ProgramArguments": [
+        os.path.expanduser(os.environ["DAEMON_EXECUTABLE"]),
+        "--daemon",
+        "--daemon-port-file",
+        os.path.expanduser(os.environ["DAEMON_PORT_FILE"]),
+    ],
+    "RunAtLoad": True,
+    "KeepAlive": True,
+    "ProcessType": "Background",
+    "StandardOutPath": os.path.join(log_dir, "daemon.out.log"),
+    "StandardErrorPath": os.path.join(log_dir, "daemon.err.log"),
+}
+with open(plist_path, "wb") as fh:
+    plistlib.dump(plist, fh)
+PY
+
+  local domain="gui/$(id -u)"
+  # bootout an older copy if present, then bootstrap fresh. Ignore bootout
+  # errors when nothing is loaded yet.
+  /bin/launchctl bootout "$domain" "$DAEMON_PLIST" >/dev/null 2>&1 || true
+  if ! /bin/launchctl bootstrap "$domain" "$DAEMON_PLIST"; then
+    echo "amaran: failed to bootstrap $DAEMON_LABEL" >&2
+    return 1
+  fi
+  /bin/launchctl enable "$domain/$DAEMON_LABEL" >/dev/null 2>&1 || true
+
+  if [[ "$JSON" == "1" ]]; then
+    printf '{"ok":true,"installed":true,"label":"%s","plist":"%s"}\n' "$DAEMON_LABEL" "$DAEMON_PLIST"
+  else
+    echo "daemon installed: $DAEMON_LABEL (runs at login, auto-restarts)"
+    echo "plist: $DAEMON_PLIST"
+    echo "If Bluetooth control fails, grant permission in"
+    echo "System Settings > Privacy & Security > Bluetooth, then run: amaran daemon install"
+  fi
+}
+
+daemon_uninstall() {
+  local domain="gui/$(id -u)"
+  # Stop via launchd first so KeepAlive does not relaunch it after shutdown.
+  /bin/launchctl bootout "$domain" "$DAEMON_PLIST" >/dev/null 2>&1 || true
+  daemon_request shutdown >/dev/null 2>&1 || true
+  rm -f "$DAEMON_PLIST"
+
+  if [[ "$JSON" == "1" ]]; then
+    printf '{"ok":true,"installed":false,"label":"%s"}\n' "$DAEMON_LABEL"
+  else
+    echo "daemon uninstalled: $DAEMON_LABEL"
+  fi
 }
 
 run_tui_command() {
