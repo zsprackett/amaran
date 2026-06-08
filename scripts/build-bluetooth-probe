@@ -6,17 +6,18 @@ APP="$ROOT/BluetoothProbe.app"
 OUTPUT="$APP/Contents/MacOS/BluetoothProbe"
 IDENTITY="${AMARAN_CODESIGN_IDENTITY:--}"
 LOCAL_REQUIREMENT='=designated => identifier "dev.local.bluetooth-probe"'
+CONFIG="${AMARAN_BUILD_CONFIG:-release}"
+
+# Build the BluetoothProbe executable via SwiftPM (shares AmaranCore with the
+# CLI), then drop it into the existing signed .app bundle. The bundle's
+# Info.plist (CFBundleIdentifier dev.local.bluetooth-probe) and the codesign
+# identity below are what macOS TCC keys on for the Bluetooth permission, so
+# keep both stable.
+swift build --package-path "$ROOT" -c "$CONFIG" --product BluetoothProbe
+BIN_DIR="$(swift build --package-path "$ROOT" -c "$CONFIG" --show-bin-path)"
 
 mkdir -p "$APP/Contents/MacOS"
-
-swiftc \
-  "$ROOT/bluetooth_probe.swift" \
-  "$ROOT/native_mesh_crypto.swift" \
-  "$ROOT/native_mesh_config.swift" \
-  "$ROOT/native_mesh_provisioning.swift" \
-  "$ROOT/native_mesh_state.swift" \
-  "$ROOT/native_telink_control.swift" \
-  -o "$OUTPUT"
+cp "$BIN_DIR/BluetoothProbe" "$OUTPUT"
 
 if [ "$IDENTITY" = "-" ]; then
   codesign --force --deep --sign - --requirements "$LOCAL_REQUIREMENT" "$APP"

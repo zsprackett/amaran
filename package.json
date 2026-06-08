@@ -7,9 +7,10 @@
   },
   "scripts": {
     "amaran": "./bin/amaran",
+    "build": "swift build -c release",
     "build:bluetooth-helper": "scripts/build-bluetooth-probe",
-    "test": "npm run test:cli-wrapper && npm run test:mesh",
-    "test:cli-wrapper": "scripts/test-cli-wrapper",
-    "test:mesh": "swiftc native_mesh_crypto.swift native_mesh_config.swift native_mesh_provisioning.swift native_mesh_state.swift native_telink_control.swift tests/native_mesh_crypto_tests.swift -o /tmp/amaran-mesh-tests && /tmp/amaran-mesh-tests"
+    "test": "npm run test:core && npm run test:mesh",
+    "test:core": "swift test",
+    "test:mesh": "swiftc Sources/BluetoothProbe/native_mesh_crypto.swift Sources/BluetoothProbe/native_mesh_config.swift Sources/BluetoothProbe/native_mesh_provisioning.swift Sources/BluetoothProbe/native_mesh_state.swift Sources/BluetoothProbe/native_telink_control.swift tests/native_mesh_crypto_tests.swift -o /tmp/amaran-mesh-tests && /tmp/amaran-mesh-tests"
   }
 }

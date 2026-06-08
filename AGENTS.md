@@ -1,3 +1,8 @@
+> **Swift CLI port (current):** The CLI is now a native Swift binary (SwiftPM:
+> `Sources/AmaranCore`, `AmaranCLI`, `amaran`, `BluetoothProbe`). `bin/amaran` is a
+> thin shim that builds and execs it; there is no Python. See `docs/swift-cli-port.md`.
+> Sections below that describe a zsh dispatcher or Python helpers predate the cutover.
+
 # AGENTS
 
 ## Project Notes

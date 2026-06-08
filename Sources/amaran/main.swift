@@ -1,0 +1,3 @@
+import AmaranCLI
+
+AmaranCommand.main()

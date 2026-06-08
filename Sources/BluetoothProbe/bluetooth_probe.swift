@@ -2144,6 +2144,7 @@ final class ProbeOptions {
 
 struct RuntimeDaemonOptions {
     let portFile: String
+    let socketPath: String
 
     init(arguments: [String]) {
         var portFile = "\(NSHomeDirectory())/Library/Application Support/amaran-cli/daemon.json"
@@ -2157,6 +2158,10 @@ struct RuntimeDaemonOptions {
             }
         }
         self.portFile = portFile
+        // The daemon listens on a Unix domain socket beside the metadata file.
+        // The containing directory is created 0700, so the socket is reachable
+        // only by the owner (no open localhost port).
+        self.socketPath = (portFile as NSString).deletingLastPathComponent + "/daemon.sock"
     }
 }
 
@@ -2225,22 +2230,33 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
 
     init(options: RuntimeDaemonOptions) throws {
         self.options = options
-        self.listener = try NWListener(using: .tcp, on: 0)
+        // Ensure the 0700 socket directory exists, then bind a Unix domain
+        // socket listener (removing any stale socket file first).
+        try FileManager.default.createDirectory(
+            atPath: (options.socketPath as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try? FileManager.default.removeItem(atPath: options.socketPath)
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = NWEndpoint.unix(path: options.socketPath)
+        parameters.allowLocalEndpointReuse = true
+        self.listener = try NWListener(using: parameters)
         super.init()
         self.manager = CBCentralManager(delegate: self, queue: DispatchQueue.main)
         configureListener()
     }
 
     func start() {
-        Log.daemon.notice("daemon starting (pid \(getpid(), privacy: .public), port file \(self.options.portFile, privacy: .public))")
+        Log.daemon.notice("daemon starting (pid \(getpid(), privacy: .public), socket \(self.options.socketPath, privacy: .public))")
         listener.start(queue: .main)
     }
 
     private func configureListener() {
         listener.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
-            if case .ready = state, let port = self.listener.port {
-                self.writePortFile(port: Int(port.rawValue))
+            if case .ready = state {
+                self.writeDaemonFile()
             }
         }
         listener.newConnectionHandler = { [weak self] connection in
@@ -2248,7 +2264,7 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
         }
     }
 
-    private func writePortFile(port: Int) {
+    private func writeDaemonFile() {
         do {
             let url = URL(fileURLWithPath: options.portFile)
             try FileManager.default.createDirectory(
@@ -2256,16 +2272,19 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
                 withIntermediateDirectories: true,
                 attributes: [.posixPermissions: 0o700]
             )
+            // Restrict the socket itself for defense in depth.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: options.socketPath)
             let payload: [String: Any] = [
                 "pid": Int(getpid()),
-                "port": port,
+                "socket_path": options.socketPath,
                 "started_at": isoTimestamp(),
             ]
             try writeJSONPayload(payload, to: options.portFile)
-            Log.daemon.notice("listening on 127.0.0.1:\(port, privacy: .public)")
+            Log.daemon.notice("listening on unix socket \(self.options.socketPath, privacy: .public)")
         } catch {
-            Log.daemon.error("failed to write daemon port file: \(error.localizedDescription, privacy: .public)")
-            fputs("failed to write daemon port file: \(error.localizedDescription)\n", stderr)
+            Log.daemon.error("failed to write daemon metadata file: \(error.localizedDescription, privacy: .public)")
+            fputs("failed to write daemon metadata file: \(error.localizedDescription)\n", stderr)
         }
     }
 
@@ -2328,6 +2347,7 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
             sendPayload(["ok": true, "data": ["daemon": daemonSummary(), "shutdown": true]], connection: connection)
             listener.cancel()
             try? FileManager.default.removeItem(atPath: options.portFile)
+            try? FileManager.default.removeItem(atPath: options.socketPath)
             DispatchQueue.main.async {
                 CFRunLoopStop(CFRunLoopGetMain())
             }
