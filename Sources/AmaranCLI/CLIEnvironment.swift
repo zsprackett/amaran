@@ -3,7 +3,7 @@ import Foundation
 /// Resolved CLI configuration and filesystem paths. Mirrors the defaults and
 /// environment variables the zsh dispatcher used, so behavior matches after the
 /// cutover. `AMARAN_ROOT` is exported by the `bin/amaran` shim to locate the
-/// BluetoothProbe.app bundle.
+/// AmaranHelper.app bundle.
 public struct CLIEnvironment {
     public let statePath: String
     public let daemonMetadataPath: String
@@ -18,7 +18,7 @@ public struct CLIEnvironment {
     public let defaultNodeID: String?
 
     public init(environment: [String: String], home: String, executablePath: String? = nil) {
-        let label = "dev.local.bluetooth-probe"
+        let label = "dev.local.amaran-helper"
         let appSupport = home + "/Library/Application Support/amaran-cli"
 
         statePath = environment["AMARAN_CLI_STATE_PATH"] ?? appSupport + "/state.json"
@@ -26,18 +26,18 @@ public struct CLIEnvironment {
 
         let resolvedApp: String
         if let root = environment["AMARAN_ROOT"], !root.isEmpty {
-            resolvedApp = root + "/BluetoothProbe.app"
+            resolvedApp = root + "/AmaranHelper.app"
         } else if let executablePath {
-            // Fallback: .../<root>/.build/<config>/amaran -> <root>/BluetoothProbe.app
+            // Fallback: .../<root>/.build/<config>/amaran -> <root>/AmaranHelper.app
             let buildDir = (executablePath as NSString).deletingLastPathComponent
             let configParent = (buildDir as NSString).deletingLastPathComponent
             let root = (configParent as NSString).deletingLastPathComponent
-            resolvedApp = root + "/BluetoothProbe.app"
+            resolvedApp = root + "/AmaranHelper.app"
         } else {
-            resolvedApp = appSupport + "/BluetoothProbe.app"
+            resolvedApp = appSupport + "/AmaranHelper.app"
         }
         appPath = resolvedApp
-        daemonExecutablePath = resolvedApp + "/Contents/MacOS/BluetoothProbe"
+        daemonExecutablePath = resolvedApp + "/Contents/MacOS/AmaranHelper"
 
         launchAgentPlistPath = home + "/Library/LaunchAgents/" + label + ".plist"
         logDir = home + "/Library/Logs/amaran"
@@ -61,7 +61,7 @@ public struct CLIEnvironment {
         DaemonClient(metadataPath: daemonMetadataPath, appPath: appPath)
     }
 
-    /// Repo root (parent of BluetoothProbe.app) and the helper-script directory.
+    /// Repo root (parent of AmaranHelper.app) and the helper-script directory.
     public var rootDir: String { (appPath as NSString).deletingLastPathComponent }
     public func scriptPath(_ name: String) -> String { rootDir + "/scripts/" + name }
 }

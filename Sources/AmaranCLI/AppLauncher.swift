@@ -1,7 +1,7 @@
 import Foundation
 import AmaranCore
 
-/// Runs the BluetoothProbe app once (`/usr/bin/open -n -W ... --args`), injecting
+/// Runs the AmaranHelper app once (`/usr/bin/open -n -W ... --args`), injecting
 /// `--output <tmp>` and returning the decoded `{ok,data,error}` it writes. Used
 /// by the one-shot diagnostics and as the ControlRunner fallback.
 public enum AppLauncher {

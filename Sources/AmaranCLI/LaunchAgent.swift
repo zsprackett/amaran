@@ -30,7 +30,7 @@ public enum LaunchAgent {
         public var description: String {
             switch self {
             case .executableMissing(let path):
-                return "\(path) is missing; run scripts/build-bluetooth-probe first"
+                return "\(path) is missing; run scripts/build-amaran-helper first"
             case .bootstrapFailed:
                 return "failed to bootstrap launchd agent"
             }

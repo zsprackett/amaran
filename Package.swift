@@ -8,7 +8,7 @@ let package = Package(
     ],
     products: [
         .library(name: "AmaranCore", targets: ["AmaranCore"]),
-        .executable(name: "BluetoothProbe", targets: ["BluetoothProbe"]),
+        .executable(name: "AmaranHelper", targets: ["AmaranHelper"]),
         .executable(name: "amaran", targets: ["amaran"])
     ],
     dependencies: [
@@ -36,9 +36,9 @@ let package = Package(
             path: "Sources/amaran"
         ),
         .executableTarget(
-            name: "BluetoothProbe",
+            name: "AmaranHelper",
             dependencies: ["AmaranCore"],
-            path: "Sources/BluetoothProbe",
+            path: "Sources/AmaranHelper",
             // The native BLE/mesh code was written and shipped under the Swift 5
             // language mode (raw `swiftc`). Keep it there rather than refactor
             // ~5k lines of working CoreBluetooth code for Swift 6 strict

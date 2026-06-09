@@ -8,9 +8,9 @@ Local CLI control for owned amaran fixtures on macOS.
 
 The CLI keeps its own JSON studio manifest in
 `~/Library/Application Support/amaran-cli/state.json` and talks to fixtures
-directly through the signed `BluetoothProbe.app` CoreBluetooth helper. Runtime
+directly through the signed `AmaranHelper.app` CoreBluetooth helper. Runtime
 commands are direct: there is no Desktop helper fallback. Runtime BLE commands
-auto-start a local `BluetoothProbe.app` daemon so repeated commands can reuse
+auto-start a local `AmaranHelper.app` daemon so repeated commands can reuse
 CoreBluetooth and the Mesh Proxy connection. The recommended studio flow is to
 keep Sidus Link Pro on the iPad as the pairing source of truth, then import
 that mesh metadata from an encrypted local iPad backup.
@@ -225,28 +225,6 @@ Link Pro can try to provision it. If Sidus accepts the dummy node, the capture
 file gets the mesh NetKey and dummy node DeviceKey. It does not yet capture the
 mesh AppKey, so it is not enough by itself to control existing fixtures.
 
-For the nRF52840 DK join probe, read a redacted capture summary with:
-
-```sh
-scripts/read-dk-capture
-```
-
-The live iPad attempt loop is:
-
-```sh
-scripts/dk-sidus-attempt prepare
-# Run the Sidus Link Pro add-fixture flow.
-scripts/dk-sidus-attempt read --output /private/tmp/amaran-dk-sidus-attempt.hex
-```
-
-If the DK capture contains both NetKey and AppKey, convert it into a
-`state-join` source without printing keys:
-
-```sh
-scripts/dk-capture-to-state-join --capture /private/tmp/amaran-dk-capture.hex --output /private/tmp/sidus-join.json --fixture 2=Key
-./bin/amaran state-join /private/tmp/sidus-join.json
-```
-
 ## Pairing
 
 For the first factory-reset or otherwise unprovisioned fixture in a new studio
@@ -322,7 +300,7 @@ one-shot helper path if the daemon cannot be reached.
 | `./bin/amaran gm <0-20> [--node <id-or-name>]` | Send Sidus-style green-magenta correction while preserving current CCT and intensity. `10` is neutral, lower is greener, higher is more magenta. Fails for fixture families without G/M support. |
 | `./bin/amaran daemon [start\|status\|stop] [--json]` | Start, inspect, or stop the local runtime daemon without sending fixture control commands. Runtime commands auto-start it when needed. |
 | `./bin/amaran daemon install \| uninstall [--json]` | Register or remove a launchd LaunchAgent so the daemon runs at login and auto-restarts on crash. `install` primes the macOS Bluetooth permission for the signed bundle on first run. |
-| `./bin/amaran daemon logs [--since <dur>] [--json]` | Stream the daemon's unified logs live (subsystem `dev.local.bluetooth-probe`), or show history with `--since 1h`. `--json` emits `ndjson`. |
+| `./bin/amaran daemon logs [--since <dur>] [--json]` | Stream the daemon's unified logs live (subsystem `dev.local.amaran-helper`), or show history with `--since 1h`. `--json` emits `ndjson`. |
 
 State and pairing commands manage local state and fixture setup.
 
@@ -406,9 +384,9 @@ Global options:
 - The project is a SwiftPM package: `Sources/AmaranCore` (shared state model,
   validation, control specs, daemon protocol, iOS-backup decryption),
   `Sources/AmaranCLI` (commands), `Sources/amaran` (the CLI executable), and
-  `Sources/BluetoothProbe` (the CoreBluetooth app). `bin/amaran` is a shim that
+  `Sources/AmaranHelper` (the CoreBluetooth app). `bin/amaran` is a shim that
   builds and execs the `amaran` binary.
-- `Sources/BluetoothProbe/native_mesh_crypto.swift` contains Bluetooth Mesh
+- `Sources/AmaranHelper/native_mesh_crypto.swift` contains Bluetooth Mesh
   crypto, access, transport, Network PDU, and Proxy PDU builders.
 - `native_mesh_config.swift` contains post-provisioning Configuration Client
   message builders and decoders.
@@ -428,11 +406,11 @@ Global options:
 Rebuild and sign the CoreBluetooth helper with:
 
 ```sh
-npm run build:bluetooth-helper
+npm run build:amaran-helper
 ```
 
 The default build uses an ad-hoc signature with a stable local designated
-requirement for `dev.local.bluetooth-probe`. Set `AMARAN_CODESIGN_IDENTITY` to
+requirement for `dev.local.amaran-helper`. Set `AMARAN_CODESIGN_IDENTITY` to
 use a real signing identity instead.
 
 Run the default regression gate:
@@ -448,7 +426,7 @@ npm run test:cli-wrapper
 ```
 
 If commands fail immediately with `central_state unauthorized`, re-enable
-macOS Bluetooth permission for `BluetoothProbe.app`. Older ad-hoc builds used
+macOS Bluetooth permission for `AmaranHelper.app`. Older ad-hoc builds used
 changing `cdhash` requirements, so an existing denied or stale permission entry
 may need to be reset once. The daemon also logs `Bluetooth permission not
 granted` to the unified log in this case; check `./bin/amaran daemon logs`.

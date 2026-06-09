@@ -3,7 +3,7 @@
 The CLI no longer has a runtime dependency on the vendor desktop app. The old
 database import command and helper fallback have been removed from the wrapper
 and from the tracked app bundle artifacts. Stable commands now require local
-CLI state and go through `BluetoothProbe.app`.
+CLI state and go through `AmaranHelper.app`.
 
 ## Current Boundary
 
@@ -117,7 +117,7 @@ current intensity.
 
 ## Implementation Pieces
 
-- `BluetoothProbe.app` is the signed CoreBluetooth helper used by BLE commands.
+- `AmaranHelper.app` is the signed CoreBluetooth helper used by BLE commands.
 - `native_mesh_crypto.swift` implements Bluetooth Mesh crypto, access,
   transport, Network PDU, and Proxy PDU builders.
 - `native_mesh_config.swift` implements Config Client message builders and
@@ -130,7 +130,7 @@ current intensity.
 Rebuild the helper with:
 
 ```sh
-npm run build:bluetooth-helper
+npm run build:amaran-helper
 ```
 
 Run the local regression gate with:
@@ -147,7 +147,7 @@ npm test
 - macOS may hide the BLE MAC for provisioned fixtures; the runtime
   does not need it, but fixture summaries may show `unknown`.
 - If commands fail immediately with `central_state unauthorized`, re-enable
-  Bluetooth permission for `BluetoothProbe.app`.
+  Bluetooth permission for `AmaranHelper.app`.
 
 ## References
 

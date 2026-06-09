@@ -2,22 +2,22 @@
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-APP="$ROOT/BluetoothProbe.app"
-OUTPUT="$APP/Contents/MacOS/BluetoothProbe"
+APP="$ROOT/AmaranHelper.app"
+OUTPUT="$APP/Contents/MacOS/AmaranHelper"
 IDENTITY="${AMARAN_CODESIGN_IDENTITY:--}"
-LOCAL_REQUIREMENT='=designated => identifier "dev.local.bluetooth-probe"'
+LOCAL_REQUIREMENT='=designated => identifier "dev.local.amaran-helper"'
 CONFIG="${AMARAN_BUILD_CONFIG:-release}"
 
-# Build the BluetoothProbe executable via SwiftPM (shares AmaranCore with the
+# Build the AmaranHelper executable via SwiftPM (shares AmaranCore with the
 # CLI), then drop it into the existing signed .app bundle. The bundle's
-# Info.plist (CFBundleIdentifier dev.local.bluetooth-probe) and the codesign
+# Info.plist (CFBundleIdentifier dev.local.amaran-helper) and the codesign
 # identity below are what macOS TCC keys on for the Bluetooth permission, so
 # keep both stable.
-swift build --package-path "$ROOT" -c "$CONFIG" --product BluetoothProbe
+swift build --package-path "$ROOT" -c "$CONFIG" --product AmaranHelper
 BIN_DIR="$(swift build --package-path "$ROOT" -c "$CONFIG" --show-bin-path)"
 
 mkdir -p "$APP/Contents/MacOS"
-cp "$BIN_DIR/BluetoothProbe" "$OUTPUT"
+cp "$BIN_DIR/AmaranHelper" "$OUTPUT"
 
 if [ "$IDENTITY" = "-" ]; then
   codesign --force --deep --sign - --requirements "$LOCAL_REQUIREMENT" "$APP"
