@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+# Compile and run the native Bluetooth Mesh crypto/vector tests. These live
+# outside the SwiftPM test suite because the native BLE/mesh sources build in
+# Swift 5 language mode and are compiled standalone with raw `swiftc` rather
+# than as part of the AmaranHelper module.
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+OUT="${TMPDIR:-/tmp}/amaran-mesh-tests"
+
+swiftc \
+  "$ROOT/Sources/AmaranHelper/native_mesh_crypto.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_config.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_provisioning.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_state.swift" \
+  "$ROOT/Sources/AmaranHelper/native_telink_control.swift" \
+  "$ROOT/tests/native_mesh_crypto_tests.swift" \
+  -o "$OUT"
+
+"$OUT"

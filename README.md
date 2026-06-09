@@ -17,7 +17,7 @@ that mesh metadata from an encrypted local iPad backup.
 
 The CLI is a native Swift binary (SwiftPM). `./bin/amaran` is a thin shim that
 builds the release binary on first run (or run `swift build -c release` /
-`npm run build`) and execs it. There is no Python dependency.
+`make build`) and execs it. There is no Python dependency.
 
 ```sh
 ./bin/amaran help
@@ -406,7 +406,7 @@ Global options:
 Rebuild and sign the CoreBluetooth helper with:
 
 ```sh
-npm run build:amaran-helper
+make build-helper      # or: scripts/build-amaran-helper
 ```
 
 The default build uses an ad-hoc signature with a stable local designated
@@ -416,13 +416,7 @@ use a real signing identity instead.
 Run the default regression gate:
 
 ```sh
-npm test
-```
-
-Run only the non-BLE wrapper checks:
-
-```sh
-npm run test:cli-wrapper
+make test              # or: swift test && scripts/test-mesh
 ```
 
 If commands fail immediately with `central_state unauthorized`, re-enable

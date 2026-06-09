@@ -264,7 +264,7 @@ Implementation notes:
 Development notes:
 
 - Rebuild and sign the CoreBluetooth helper with
-  `npm run build:amaran-helper`. The default ad-hoc signature embeds a stable
+  `make build-helper` (or `scripts/build-amaran-helper`). The default ad-hoc signature embeds a stable
   local designated requirement for `dev.local.amaran-helper`; set
   `AMARAN_CODESIGN_IDENTITY` to use a real signing identity instead.
 - `./bin/amaran gatt-probe` launches `AmaranHelper.app` and uses
@@ -381,13 +381,13 @@ Development notes:
   builders, DevKey proxy wrapping for Config messages, segmented lower transport
   access PDU assembly/reassembly, Composition Data Status decoding, Config
   AppKey List decoding, Segment Acknowledgment building/decoding, and fake-key
-  `state.json` payload construction (`npm run test:mesh`):
-  `swiftc Sources/AmaranHelper/native_mesh_crypto.swift Sources/AmaranHelper/native_mesh_config.swift Sources/AmaranHelper/native_mesh_provisioning.swift Sources/AmaranHelper/native_mesh_state.swift Sources/AmaranHelper/native_telink_control.swift tests/native_mesh_crypto_tests.swift -o /tmp/amaran-mesh-tests`
-  then `/tmp/amaran-mesh-tests`.
-- Run `npm test` for the default local regression gate. It combines
-  `test:core` (`swift test` — the AmaranCore/AmaranCLI unit suites, including
+  `state.json` payload construction (`scripts/test-mesh`, which compiles the
+  native mesh sources plus `tests/native_mesh_crypto_tests.swift` with `swiftc`
+  and runs them).
+- Run `make test` for the default local regression gate. It combines
+  `swift test` (the AmaranCore/AmaranCLI unit suites, including
   state validation, control-spec grammar, capabilities, daemon protocol, and
-  iOS-backup crypto RFC vectors) with `test:mesh`.
+  iOS-backup crypto RFC vectors) with `scripts/test-mesh`.
 - Config AppKey Add is longer than one unsegmented access message after TransMIC;
   send it only through the Config AppKey Add diagnostic, which uses the
   segmented send path and waits for the expected Segment Acknowledgment.

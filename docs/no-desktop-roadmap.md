@@ -130,13 +130,13 @@ current intensity.
 Rebuild the helper with:
 
 ```sh
-npm run build:amaran-helper
+make build-helper
 ```
 
 Run the local regression gate with:
 
 ```sh
-npm test
+make test
 ```
 
 ## Remaining Limitations
