@@ -188,40 +188,7 @@ mesh AppKey. The current capture stops at PB-GATT Provisioning Complete; the
 next step is to also emulate enough Mesh Proxy service `0x1828` and Config
 Server behavior to receive/decode Config AppKey Add from Sidus Link Pro.
 
-The nRF52840 DK probe can capture the same join material from a hardware
-Bluetooth Mesh provisionee. Read the DK capture with redacted output:
-
-```sh
-scripts/read-dk-capture
-```
-
-For the live Sidus trial, use the operator helper:
-
-```sh
-scripts/dk-sidus-attempt prepare
-# Run the Sidus Link Pro add-fixture flow on the iPad.
-scripts/dk-sidus-attempt read --output /private/tmp/amaran-dk-sidus-attempt.hex
-```
-
-If the DK has captured both NetKey and AppKey, convert the raw capture into a
-`state-join` source file. You still need to supply the real fixture unicast
-addresses because the DK capture only knows the dummy node address Sidus gave
-the probe:
-
-```sh
-scripts/dk-capture-to-state-join --capture /private/tmp/amaran-dk-capture.hex --output /private/tmp/sidus-join.json --fixture 2=Key --fixture 5=Fill
-./bin/amaran state-join /private/tmp/sidus-join.json
-```
-
-The converter writes `0600`, refuses captures missing NetKey/AppKey, and prints
-only redacted metadata. The generated `sidus-join.json` is key-bearing.
-
-One observed Sidus failure reached Invite, Start, and provisioner Public Key,
-then disconnected after the first segmented DK Public Key notification. The DK
-firmware now raises ATT/L2CAP MTU support so the 65-byte Public Key response can
-be returned as a single PB-GATT notification.
-
-It may also fail if Sidus Link Pro filters pairable devices to known
+Provisioning may fail if Sidus Link Pro filters pairable devices to known
 Aputure/amaran fixture identities, or if it requires Bluetooth Mesh
 provisioning service data. macOS CoreBluetooth's peripheral API supports the
 service UUID and local name here, but not the full service-data advertisement

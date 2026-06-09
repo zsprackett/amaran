@@ -225,28 +225,6 @@ Link Pro can try to provision it. If Sidus accepts the dummy node, the capture
 file gets the mesh NetKey and dummy node DeviceKey. It does not yet capture the
 mesh AppKey, so it is not enough by itself to control existing fixtures.
 
-For the nRF52840 DK join probe, read a redacted capture summary with:
-
-```sh
-scripts/read-dk-capture
-```
-
-The live iPad attempt loop is:
-
-```sh
-scripts/dk-sidus-attempt prepare
-# Run the Sidus Link Pro add-fixture flow.
-scripts/dk-sidus-attempt read --output /private/tmp/amaran-dk-sidus-attempt.hex
-```
-
-If the DK capture contains both NetKey and AppKey, convert it into a
-`state-join` source without printing keys:
-
-```sh
-scripts/dk-capture-to-state-join --capture /private/tmp/amaran-dk-capture.hex --output /private/tmp/sidus-join.json --fixture 2=Key
-./bin/amaran state-join /private/tmp/sidus-join.json
-```
-
 ## Pairing
 
 For the first factory-reset or otherwise unprovisioned fixture in a new studio

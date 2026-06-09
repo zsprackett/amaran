@@ -190,7 +190,7 @@ pretty-printed, sorted keys, trailing newline.
    `discover-existing-mesh`, `amaran-tui`, `amaran_capabilities.py`,
    `requirements-tui.txt`, and the obsolete `test-cli-wrapper`. `package.json`
    test gate is now `test:core` (swift test) + `test:mesh`. README updated;
-   AGENTS.md/HANDOFF.md bannered. Verified: `./bin/amaran doctor/list` via the
+   AGENTS.md bannered. Verified: `./bin/amaran doctor/list` via the
    shim, `npm test` green.
 
 ## Known follow-ups
@@ -198,7 +198,7 @@ pretty-printed, sorted keys, trailing newline.
   `join-capture`/`config-node-reset-test`) and the live `discover` batch probe.
 - (Done) End-to-end encrypted-backup decrypt verified against a real backup.
 - `pair-test` (a zsh diagnostic alias of `pair`) was not carried over.
-- A fuller AGENTS.md/HANDOFF.md rewrite, and an optional CLI integration smoke
+- A fuller AGENTS.md rewrite, and an optional CLI integration smoke
   test to replace `test-cli-wrapper`.
 
 ## Verification

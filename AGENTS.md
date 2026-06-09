@@ -369,25 +369,6 @@ Development notes:
   metadata.
   Internal helper flag `--expect-segment-ack <SeqZero> <SegN>` waits for the
   matching acknowledgment and reports safe aggregate ack metadata.
-- For the nRF52840 DK Sidus join probe, use `scripts/read-dk-capture` to read
-  and decode the current `amaran_capture_state` block. It finds the symbol
-  address from the current Zephyr ELF and prints only redacted metadata. Raw
-  capture files may contain mesh keys if capture succeeds; keep them in
-  `/private/tmp` or another private location and never commit them.
-  `scripts/read-dk-capture --clear` writes the capture clear marker, resets the
-  DK, and verifies a clean capture header. Use it before a fresh Sidus attempt,
-  not after an attempt that may have captured keys. If a capture has both NetKey
-  and AppKey, `scripts/dk-capture-to-state-join --capture <capture.hex>
-  --output <join.json> --fixture <addr[=name]>` converts it into the
-  key-bearing `state-join` source format with `0600` permissions and redacted
-  output. The converter cannot infer real fixture unicast addresses from the DK
-  capture; pass each real fixture address explicitly.
-  `scripts/dk-sidus-attempt prepare|read|convert` wraps the same steps for the
-  human-in-the-loop Sidus trial. The current DK firmware raises ATT/L2CAP MTU
-  support so the 65-byte Provisioning Public Key response can be sent as one
-  `len=66 mtu=247` PB-GATT notification. This was added after Sidus reached
-  Invite, Start, and provisioner Public Key, then disconnected immediately after
-  the first 30-byte segmented DK Public Key notification.
 - If commands fail immediately with `central_state unauthorized`, macOS
   Bluetooth permission for `AmaranHelper.app` likely needs to be re-enabled.
   Older ad-hoc builds used changing `cdhash` requirements, so an existing denied
