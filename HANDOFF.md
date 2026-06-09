@@ -185,9 +185,8 @@ Useful commands:
 Validation commands:
 
 ```sh
-zsh -n bin/amaran
-npm run test:mesh
-npm test
+swift build -c release      # also: ./bin/amaran builds on first run
+npm test                    # test:core (swift test) + test:mesh
 npm run build:bluetooth-helper
 git diff --check
 ```

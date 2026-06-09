@@ -1,5 +1,9 @@
 # amaran-cli
 
+> This is a fork of [aarondfrancis/amaran](https://github.com/aarondfrancis/amaran)
+> by Aaron Francis. The upstream project is a zsh + Python CLI; this fork ports it
+> to a native Swift binary (no Python). See `docs/swift-cli-port.md`.
+
 Local CLI control for owned amaran fixtures on macOS.
 
 The CLI keeps its own JSON studio manifest in
