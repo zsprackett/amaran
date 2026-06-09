@@ -109,7 +109,7 @@ public struct DaemonClient {
         let pathCapacity = MemoryLayout.size(ofValue: addr.sun_path)
         withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
             path.withCString { cstr in
-                strncpy(
+                _ = strncpy(
                     UnsafeMutableRawPointer(ptr).assumingMemoryBound(to: CChar.self),
                     cstr, pathCapacity - 1)
             }
