@@ -1,5 +1,9 @@
 # amaran-cli
 
+> This is a fork of [aarondfrancis/amaran](https://github.com/aarondfrancis/amaran)
+> by Aaron Francis. The upstream project is a zsh + Python CLI; this fork ports it
+> to a native Swift binary (no Python). See `docs/swift-cli-port.md`.
+
 Local CLI control for owned amaran fixtures on macOS.
 
 The CLI keeps its own JSON studio manifest in
@@ -10,6 +14,10 @@ auto-start a local `BluetoothProbe.app` daemon so repeated commands can reuse
 CoreBluetooth and the Mesh Proxy connection. The recommended studio flow is to
 keep Sidus Link Pro on the iPad as the pairing source of truth, then import
 that mesh metadata from an encrypted local iPad backup.
+
+The CLI is a native Swift binary (SwiftPM). `./bin/amaran` is a thin shim that
+builds the release binary on first run (or run `swift build -c release` /
+`npm run build`) and execs it. There is no Python dependency.
 
 ```sh
 ./bin/amaran help
@@ -22,7 +30,6 @@ that mesh metadata from an encrypted local iPad backup.
 ./bin/amaran provision-scan
 ./bin/amaran provision-invite-test
 ./bin/amaran provision-test
-./bin/amaran pair-test
 ./bin/amaran proxy-test
 ./bin/amaran sig-onoff-test on
 ./bin/amaran control-test intensity 20
@@ -46,7 +53,6 @@ that mesh metadata from an encrypted local iPad backup.
 ./bin/amaran scene list
 ./bin/amaran scene show "recording scene"
 ./bin/amaran daemon status
-./bin/amaran ui
 ./bin/amaran list
 ./bin/amaran probe
 ./bin/amaran status
@@ -82,15 +88,8 @@ The CLI does not load a `.env` file, and DeviceKeys should not live in one.
 Environment variables are only convenience defaults such as `AMARAN_NODE_ID`,
 `AMARAN_TIMEOUT`, `AMARAN_CLI_STATE_PATH`, and the optional
 `AMARAN_IOS_BACKUP_PASSWORD` import helper. `AMARAN_DAEMON_DISABLE=1` forces
-the older one-shot helper path, and `AMARAN_DAEMON_PORT_FILE` overrides the
-non-secret daemon port metadata path. `AMARAN_TUI_VENV` can override the
-private Textual venv path for `ui`; set `AMARAN_TUI_BOOTSTRAP=0` to prevent
-automatic dependency installation. `AMARAN_TUI_STATUS_TIMEOUT` controls the
-per-fixture status timeout inside the TUI and defaults to the lower of
-`AMARAN_TIMEOUT` and `5`. `AMARAN_TUI_DEBOUNCE` controls how long the TUI waits
-before sending brightness, CCT, or G/M changes from sliders or keys, and
-defaults to `0.35`. `AMARAN_TUI_THEME` can be
-`auto`, `dark`, or `light`.
+the one-shot helper path, and `AMARAN_DAEMON_PORT_FILE` overrides the
+non-secret daemon metadata path.
 The key-bearing file is the local state manifest, normally
 `~/Library/Application Support/amaran-cli/state.json`.
 
@@ -131,12 +130,9 @@ and fixture setup:
 ```
 
 `sidus-import` accepts either an iPad backup directory or an extracted Sidus app
-container. Encrypted backups require the Python package
-`iphone_backup_decrypt`; if it is missing, the importer creates a private venv
-under `~/Library/Application Support/amaran-cli/python/ios-backup-import` and
-installs it there. Set `AMARAN_IOS_BACKUP_IMPORT_VENV` to override that path.
-The command prompts for the backup password unless `AMARAN_IOS_BACKUP_PASSWORD`
-is set. It writes the normal CLI state file with `0600` permissions, refuses to
+container. Encrypted backups are decrypted natively (no extra dependencies); the
+command prompts for the backup password unless `AMARAN_IOS_BACKUP_PASSWORD` is
+set. It writes the normal CLI state file with `0600` permissions, refuses to
 overwrite existing state unless `--replace` is passed, and prints only redacted
 fixture summaries.
 
@@ -198,57 +194,6 @@ saved-on fixture first, then sends the saved look; saved-off fixtures receive
 capability-aware, so known `400M5-*` fixtures are clamped to `2700-6500K` and do
 not receive G/M commands. Both commands use the mesh keys in local state, but
 command output remains redacted.
-
-## Terminal UI
-
-Open the local studio control surface with:
-
-```sh
-./bin/amaran ui
-```
-
-The TUI lists known fixtures, refreshes live status, toggles power, adjusts
-brightness, CCT, and green-magenta correction, identifies a selected fixture,
-and applies or captures scenes. Scene capture is explicit: mark fixtures in the
-`cap` column to include them. If an included fixture is currently shown as off,
-the TUI saves it with `--off-node`; otherwise it reads live status. Scene rows
-apply on activation. The `del` column opens a confirmation modal before
-removing a saved local scene. The TUI uses the safe fixture capabilities exposed
-by `list --json`: for example, `400M5-*` fixtures show a `2700-6500K` CCT slider
-and mark G/M as unsupported instead of sending no-op G/M packets. The TUI talks
-to the existing CLI commands and only consumes redacted JSON output; it does not
-read or display mesh, app, or device keys.
-
-The first run installs Textual into a private venv under
-`~/Library/Application Support/amaran-cli/python/tui` if Textual is not already
-available to `python3`. It detects the terminal background color with an OSC 11
-query and falls back to macOS appearance when the terminal does not answer.
-Use `./bin/amaran ui --theme dark` or `--theme light` to override detection.
-Use `AMARAN_TUI_VENV=/path/to/venv` to choose another venv, or
-`AMARAN_TUI_BOOTSTRAP=0` if you want dependency setup to fail fast.
-Refresh-all uses a short per-fixture status timeout so stale fixtures are
-marked as errors quickly instead of making the interface feel stuck; override
-it with `AMARAN_TUI_STATUS_TIMEOUT=<seconds>`.
-Brightness, CCT, and G/M controls update the screen immediately and debounce
-runtime sends so dragging sliders or repeated keypresses collapse into one
-command; override the wait with `AMARAN_TUI_DEBOUNCE=<seconds>`.
-
-Useful keys:
-
-| Key | Action |
-| --- | --- |
-| `q` | Quit. |
-| `r` / `R` | Refresh selected fixture / all fixtures. |
-| `space` | Toggle selected fixture on or off. |
-| `x` | Include or exclude the selected fixture from the next scene capture. |
-| `+` / `-` | Brightness up or down by 1%. |
-| `[` / `]` | CCT down or up by 100K. |
-| `{` / `}` | CCT down or up by 500K. |
-| `g` / `m` | Green/magenta correction down or up by 1. |
-| Arrow keys | Adjust the focused brightness, CCT, or G/M slider. |
-| `i` | Identify the selected fixture. |
-| `a` | Apply the selected scene. |
-| `c` | Capture checked fixtures into the scene name field. |
 
 ## Joining An Existing Mesh
 
@@ -376,7 +321,8 @@ one-shot helper path if the daemon cannot be reached.
 | `./bin/amaran cct <kelvin> [--intensity <0-100>] [--gm <0-20>] [--node <id-or-name>]` | Send Telink CCT. The CLI clamps known fixture-family CCT ranges and reads status only when needed to preserve omitted intensity or supported green-magenta state. |
 | `./bin/amaran gm <0-20> [--node <id-or-name>]` | Send Sidus-style green-magenta correction while preserving current CCT and intensity. `10` is neutral, lower is greener, higher is more magenta. Fails for fixture families without G/M support. |
 | `./bin/amaran daemon [start\|status\|stop] [--json]` | Start, inspect, or stop the local runtime daemon without sending fixture control commands. Runtime commands auto-start it when needed. |
-| `./bin/amaran ui` | Open the Textual terminal control surface for fixtures and scenes. |
+| `./bin/amaran daemon install \| uninstall [--json]` | Register or remove a launchd LaunchAgent so the daemon runs at login and auto-restarts on crash. `install` primes the macOS Bluetooth permission for the signed bundle on first run. |
+| `./bin/amaran daemon logs [--since <dur>] [--json]` | Stream the daemon's unified logs live (subsystem `dev.local.bluetooth-probe`), or show history with `--since 1h`. `--json` emits `ndjson`. |
 
 State and pairing commands manage local state and fixture setup.
 
@@ -406,7 +352,6 @@ packet testing, and Config Client work.
 | `./bin/amaran provision-scan [--json]` | Scan for unprovisioned PB-GATT advertisers without writing provisioning PDUs. |
 | `./bin/amaran provision-invite-test [--attention <0-255>] [--json]` | Send only Provisioning Invite and decode Capabilities. |
 | `./bin/amaran provision-test [--add] [--attention <0-255>] [--json]` | Run no-OOB PB-GATT provisioning and write or append state, without post-provision configuration. |
-| `./bin/amaran pair-test [--add] [--attention <0-255>] [--dry-run] [--verify] [--json]` | Diagnostic alias for provisioning plus post-provision configuration. |
 | `./bin/amaran monitor [--node <id-or-name>] [--timeout <sec>] [--json]` | Subscribe to Mesh Proxy notifications for reverse-engineering runtime packets. It writes a proxy reject-list filter first so application traffic is forwarded. JSON output may include raw access parameters, but not mesh keys. |
 | `./bin/amaran proxy-test [--json]` | Write a public sample Mesh Proxy PDU. |
 | `./bin/amaran sig-onoff-test <on\|off> [--node <id-or-name>] [--json]` | Send a standard Generic OnOff test PDU. The 60x S does not apply this to emitter output. |
@@ -458,12 +403,18 @@ Global options:
 - Standard SIG mesh `Generic OnOff`, `Light Lightness`, and `Light CTL` packets
   can be transmitted, but the amaran 60x S does not apply them to emitter
   output. The working control path is the Telink vendor opcode `0x26`.
-- `native_mesh_crypto.swift` contains Bluetooth Mesh crypto, access, transport,
-  Network PDU, and Proxy PDU builders.
+- The project is a SwiftPM package: `Sources/AmaranCore` (shared state model,
+  validation, control specs, daemon protocol, iOS-backup decryption),
+  `Sources/AmaranCLI` (commands), `Sources/amaran` (the CLI executable), and
+  `Sources/BluetoothProbe` (the CoreBluetooth app). `bin/amaran` is a shim that
+  builds and execs the `amaran` binary.
+- `Sources/BluetoothProbe/native_mesh_crypto.swift` contains Bluetooth Mesh
+  crypto, access, transport, Network PDU, and Proxy PDU builders.
 - `native_mesh_config.swift` contains post-provisioning Configuration Client
   message builders and decoders.
 - `native_mesh_provisioning.swift` contains PB-GATT provisioning helpers.
-- `native_mesh_state.swift` contains the local state payload builder.
+- `native_mesh_state.swift` contains the native state payload builder used by the
+  app (the CLI uses `AmaranCore`).
 - `native_telink_control.swift` contains the reconstructed Telink `0x26` packet
   builders for on/off, brightness, CCT/green-magenta control, and status reads.
 - Sidus Link Pro has been observed controlling tube green/magenta tint through
@@ -499,4 +450,11 @@ npm run test:cli-wrapper
 If commands fail immediately with `central_state unauthorized`, re-enable
 macOS Bluetooth permission for `BluetoothProbe.app`. Older ad-hoc builds used
 changing `cdhash` requirements, so an existing denied or stale permission entry
-may need to be reset once.
+may need to be reset once. The daemon also logs `Bluetooth permission not
+granted` to the unified log in this case; check `./bin/amaran daemon logs`.
+
+When running as a launchd LaunchAgent (`./bin/amaran daemon install`), the
+Bluetooth permission is attributed to the signed bundle the same way as the
+`open -g` path. `install` primes that grant by launching the bundle once before
+handing off to launchd; if Bluetooth still reports `unauthorized`, grant it in
+System Settings > Privacy & Security > Bluetooth and run `daemon install` again.

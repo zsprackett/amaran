@@ -2,6 +2,22 @@ import CoreBluetooth
 import Darwin
 import Foundation
 import Network
+import os
+
+/// Unified-logging facade for the probe.
+///
+/// The daemon is launched via `open -g BluetoothProbe.app`, so stderr is
+/// discarded by launchd/Launch Services. Routing daemon-context logs through
+/// `os.Logger` keeps them in the system log store where they can be streamed
+/// with `log stream` / `log show` (see `amaran daemon logs`) or Console.app.
+/// One-shot CLI invocations continue to use stderr, which the wrapper captures.
+enum Log {
+    static let subsystem = "dev.local.bluetooth-probe"
+    static let daemon = Logger(subsystem: subsystem, category: "daemon")
+    static let ble = Logger(subsystem: subsystem, category: "ble")
+    static let mesh = Logger(subsystem: subsystem, category: "mesh")
+    static let command = Logger(subsystem: subsystem, category: "command")
+}
 
 let meshProxyService = CBUUID(string: "1828")
 let meshProvisioningService = CBUUID(string: "1827")
@@ -2128,6 +2144,7 @@ final class ProbeOptions {
 
 struct RuntimeDaemonOptions {
     let portFile: String
+    let socketPath: String
 
     init(arguments: [String]) {
         var portFile = "\(NSHomeDirectory())/Library/Application Support/amaran-cli/daemon.json"
@@ -2141,6 +2158,10 @@ struct RuntimeDaemonOptions {
             }
         }
         self.portFile = portFile
+        // The daemon listens on a Unix domain socket beside the metadata file.
+        // The containing directory is created 0700, so the socket is reachable
+        // only by the owner (no open localhost port).
+        self.socketPath = (portFile as NSString).deletingLastPathComponent + "/daemon.sock"
     }
 }
 
@@ -2209,21 +2230,33 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
 
     init(options: RuntimeDaemonOptions) throws {
         self.options = options
-        self.listener = try NWListener(using: .tcp, on: 0)
+        // Ensure the 0700 socket directory exists, then bind a Unix domain
+        // socket listener (removing any stale socket file first).
+        try FileManager.default.createDirectory(
+            atPath: (options.socketPath as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        try? FileManager.default.removeItem(atPath: options.socketPath)
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = NWEndpoint.unix(path: options.socketPath)
+        parameters.allowLocalEndpointReuse = true
+        self.listener = try NWListener(using: parameters)
         super.init()
         self.manager = CBCentralManager(delegate: self, queue: DispatchQueue.main)
         configureListener()
     }
 
     func start() {
+        Log.daemon.notice("daemon starting (pid \(getpid(), privacy: .public), socket \(self.options.socketPath, privacy: .public))")
         listener.start(queue: .main)
     }
 
     private func configureListener() {
         listener.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
-            if case .ready = state, let port = self.listener.port {
-                self.writePortFile(port: Int(port.rawValue))
+            if case .ready = state {
+                self.writeDaemonFile()
             }
         }
         listener.newConnectionHandler = { [weak self] connection in
@@ -2231,7 +2264,7 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
         }
     }
 
-    private func writePortFile(port: Int) {
+    private func writeDaemonFile() {
         do {
             let url = URL(fileURLWithPath: options.portFile)
             try FileManager.default.createDirectory(
@@ -2239,14 +2272,19 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
                 withIntermediateDirectories: true,
                 attributes: [.posixPermissions: 0o700]
             )
+            // Restrict the socket itself for defense in depth.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: options.socketPath)
             let payload: [String: Any] = [
                 "pid": Int(getpid()),
-                "port": port,
+                "socket_path": options.socketPath,
                 "started_at": isoTimestamp(),
             ]
             try writeJSONPayload(payload, to: options.portFile)
+            Log.daemon.notice("listening on unix socket \(self.options.socketPath, privacy: .public)")
         } catch {
-            fputs("failed to write daemon port file: \(error.localizedDescription)\n", stderr)
+            Log.daemon.error("failed to write daemon metadata file: \(error.localizedDescription, privacy: .public)")
+            fputs("failed to write daemon metadata file: \(error.localizedDescription)\n", stderr)
         }
     }
 
@@ -2293,6 +2331,7 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
 
     private func handleRequest(_ request: [String: Any], connection: NWConnection) throws {
         let action = jsonString(request["action"]) ?? ""
+        Log.command.debug("request received: action=\(action, privacy: .public)")
         switch action {
         case "ping":
             sendPayload([
@@ -2304,9 +2343,11 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
                 ],
             ], connection: connection)
         case "shutdown":
+            Log.daemon.notice("shutdown requested")
             sendPayload(["ok": true, "data": ["daemon": daemonSummary(), "shutdown": true]], connection: connection)
             listener.cancel()
             try? FileManager.default.removeItem(atPath: options.portFile)
+            try? FileManager.default.removeItem(atPath: options.socketPath)
             DispatchQueue.main.async {
                 CFRunLoopStop(CFRunLoopGetMain())
             }
@@ -2440,6 +2481,10 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         centralState = centralStateName(central.state)
+        Log.ble.notice("central state: \(self.centralState, privacy: .public)")
+        if central.state == .unauthorized {
+            Log.ble.error("Bluetooth permission not granted; grant it in System Settings > Privacy & Security > Bluetooth")
+        }
         if central.state == .poweredOn {
             processQueue()
         } else if central.state == .unauthorized || central.state == .unsupported || central.state == .poweredOff {
@@ -2467,14 +2512,17 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        Log.ble.info("connected to mesh proxy \(peripheral.identifier.uuidString, privacy: .public)")
         peripheral.discoverServices([meshProxyService])
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        Log.ble.error("connect failed: \(error?.localizedDescription ?? "Mesh Proxy connect failed", privacy: .public)")
         finishActive(ok: false, error: error?.localizedDescription ?? "Mesh Proxy connect failed")
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        Log.ble.info("disconnected from mesh proxy\(error.map { ": \($0.localizedDescription)" } ?? "", privacy: .public)")
         if selectedPeripheral === peripheral {
             selectedPeripheral = nil
             connectedNetworkId = nil
@@ -2707,6 +2755,11 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
         var payload: [String: Any] = ["ok": ok, "data": data]
         if let error {
             payload["error"] = error
+        }
+        if ok {
+            Log.command.info("command \(command.action, privacy: .public) ok in \(String(format: "%.3f", elapsed), privacy: .public)s")
+        } else {
+            Log.command.error("command \(command.action, privacy: .public) failed in \(String(format: "%.3f", elapsed), privacy: .public)s: \(error ?? "unknown error", privacy: .public)")
         }
         sendPayload(payload, connection: command.connection)
         processQueue()
@@ -5095,6 +5148,7 @@ struct BluetoothProbeMain {
                     CFRunLoopRun()
                 }
             } catch {
+                Log.daemon.fault("failed to start daemon: \(String(describing: error), privacy: .public)")
                 fputs("failed to start daemon: \(error)\n", stderr)
             }
             return

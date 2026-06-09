@@ -1,3 +1,8 @@
+> **Swift CLI port (current):** The CLI is now a native Swift binary (SwiftPM:
+> `Sources/AmaranCore`, `AmaranCLI`, `amaran`, `BluetoothProbe`). `bin/amaran` is a
+> thin shim that builds and execs it; there is no Python. See `docs/swift-cli-port.md`.
+> Sections below that describe a zsh dispatcher or Python helpers predate the cutover.
+
 # AGENTS
 
 ## Project Notes
@@ -23,8 +28,6 @@ Useful commands:
 - `./bin/amaran provision-invite-test [--attention <0-255>] --json`
 - `./bin/amaran provision-test [--add] [--attention <0-255>]`
 - `./bin/amaran provision-test [--add] [--attention <0-255>] --json`
-- `./bin/amaran pair-test [--add] [--attention <0-255>] [--dry-run] [--verify]`
-- `./bin/amaran pair-test [--add] [--attention <0-255>] [--dry-run] [--verify] --json`
 - `./bin/amaran monitor [--node <id|name>] [--timeout <sec>]`
 - `./bin/amaran monitor [--node <id|name>] [--timeout <sec>] --json`
 - `./bin/amaran proxy-test`
@@ -75,7 +78,8 @@ Useful commands:
 - `./bin/amaran scene delete <name> --json`
 - `./bin/amaran daemon [start|status|stop]`
 - `./bin/amaran daemon [start|status|stop] --json`
-- `./bin/amaran ui`
+- `./bin/amaran daemon [install|uninstall]`
+- `./bin/amaran daemon logs [--since <dur>] [--json]`
 - `./bin/amaran list`
 - `./bin/amaran probe`
 - `./bin/amaran status`
@@ -100,27 +104,24 @@ Implementation notes:
   to third-party app databases or helper bundles.
 - `status`, `identify`, `on`, `off`, `intensity`, `cct`, and `gm` should prefer the
   auto-started local runtime daemon in `BluetoothProbe.app` when available.
-  The daemon listens only on localhost, writes non-secret port metadata under
+  The daemon listens on a `0700` Unix domain socket, writes non-secret metadata
+  (`{pid, socket_path, started_at}`) under
   `~/Library/Application Support/amaran-cli/daemon.json`, keeps CoreBluetooth
   alive, and may reuse a Mesh Proxy connection for repeated commands. Set
-  `AMARAN_DAEMON_DISABLE=1` to force the older one-shot helper path.
-- `./bin/amaran ui` launches `scripts/amaran-tui`, a Textual terminal control
-  surface backed by safe CLI JSON output. It should not read or print
-  mesh/app/device keys directly. It may auto-install Textual into a private
-  venv under `~/Library/Application Support/amaran-cli/python/tui`; set
-  `AMARAN_TUI_VENV` to override that path or `AMARAN_TUI_BOOTSTRAP=0` to
-  disable automatic dependency setup. Refresh-all uses
-  `AMARAN_TUI_STATUS_TIMEOUT`, defaulting to the lower of `AMARAN_TIMEOUT` and
-  5 seconds, so stale fixtures do not make the interface feel stuck. Theme
-  defaults to auto detection: OSC 11 terminal background query first, then
-  macOS appearance fallback. `AMARAN_TUI_THEME` or `--theme <auto|dark|light>`
-  can override it. TUI brightness, CCT, and G/M controls update locally first
-  and debounce runtime sends from sliders and rapid keypresses;
-  `AMARAN_TUI_DEBOUNCE` defaults to 0.35 seconds.
-  TUI scene capture uses a single fixture-table checkbox: `cap` includes a
-  fixture in the next capture, and included fixtures currently shown as off are
-  recorded with `--off-node` instead of reading live status. Scene rows apply
-  on activation, so no separate apply button is required.
+  `AMARAN_DAEMON_DISABLE=1` to force the one-shot helper path.
+- The daemon emits structured logs through Apple unified logging (os.Logger,
+  subsystem `dev.local.bluetooth-probe`, categories `daemon`, `ble`, `command`).
+  stderr is discarded when launched via `open -g`, so unified logging is the
+  source of truth. View it with `./bin/amaran daemon logs` (live `log stream`)
+  or `./bin/amaran daemon logs --since 1h` (`log show`). One-shot CLI invocations
+  still write diagnostics to stderr, which the wrapper captures.
+- `./bin/amaran daemon install` registers a launchd LaunchAgent at
+  `~/Library/LaunchAgents/dev.local.bluetooth-probe.plist` (`RunAtLoad`,
+  `KeepAlive`, `ProcessType Background`) so the daemon runs at login and
+  auto-restarts. It primes the Bluetooth TCC grant by launching the signed
+  bundle once before bootstrapping launchd. `uninstall` bootouts and removes the
+  plist. Because `KeepAlive` would relaunch a shutdown-only daemon, `daemon stop`
+  bootouts the agent when the plist is present instead of just sending shutdown.
 - `./bin/amaran fixture rename <node> <friendly-name>` stores a CLI-only
   `friendly_name` on the selected fixture. Runtime commands, diagnostics, and
   scene commands should accept that friendly name anywhere `--node` is accepted.
@@ -165,12 +166,10 @@ Implementation notes:
   from an encrypted local iPad backup, an unencrypted backup, or an extracted
   Sidus app container into normal CLI state. It must refuse to overwrite target
   state unless `--replace` is passed, write `0600`, and print only redacted
-  fixture summaries. Encrypted backup import uses `iphone_backup_decrypt` and
-  prompts for the backup password unless `AMARAN_IOS_BACKUP_PASSWORD` is set.
-  If that package is missing, the importer may create a private venv under
-  `~/Library/Application Support/amaran-cli/python/ios-backup-import`; set
-  `AMARAN_IOS_BACKUP_IMPORT_VENV` to override that path for tests. It must not
-  print NetKey, AppKey, DeviceKeys, or backup passwords.
+  fixture summaries. Encrypted backups are decrypted natively (CommonCrypto, no
+  external dependency); it prompts for the backup password unless
+  `AMARAN_IOS_BACKUP_PASSWORD` is set. It must not print NetKey, AppKey,
+  DeviceKeys, or backup passwords.
 - `./bin/amaran state-join <join-state.json>` converts externally supplied
   NetKey/AppKey/fixture-address metadata into CLI state for runtime control of
   an existing mesh. It must refuse to overwrite target state, write `0600`, and
@@ -191,9 +190,8 @@ Implementation notes:
   CLI-owned Config source address, discovery should relocate that source address
   before probing so a later iPad-assigned fixture at that address is not
   skipped. Because discovery uses the same status read as `status`,
-  programmatically off/asleep fixtures may not answer until woken. The script
-  may keep its old sequential path only as a fallback for tests or environments
-  without the app bundle.
+  programmatically off/asleep fixtures may not answer until woken. (The old
+  per-address fallback path was not carried into the Swift port.)
 - `./bin/amaran scene capture <name>` reads live vendor status from fixtures and
   stores a local named scene in the top-level `scenes` object. Repeated
   `--node <id-or-name>` captures a selected fixture set. Repeated
@@ -213,7 +211,7 @@ Implementation notes:
   names when local state does not contain explicit capabilities. Known
   `400M5-*` fixtures are CCT-only, clamp to `2700-6500K`, and do not support
   green-magenta correction. `list --json` may expose these non-secret
-  capabilities so the TUI can clamp sliders and hide unsupported controls.
+  capabilities so clients can clamp ranges and hide unsupported controls.
 - `./bin/amaran join-capture --output-state <capture.json>` is experimental.
   It launches `BluetoothProbe.app` as a CoreBluetooth peripheral that advertises
   Mesh Provisioning service `0x1827` and behaves as a dummy no-OOB provisionee.
@@ -291,11 +289,12 @@ Development notes:
   new fixture. It must not print generated or existing keys. Run
   `configure-test` afterward to perform the post-provisioning Config
   AppKey Add / Model App Bind phase needed for vendor control.
-- `./bin/amaran pair-test` wraps `provision-test`, waits briefly for the Mesh
+- `./bin/amaran pair` wraps `provision-test`, waits briefly for the Mesh
   Proxy advertisement, then runs `configure-test` with retries against the
   newly written or appended fixture. It must not print generated or existing
   keys. This flow has been validated on the owned amaran 60x S after a Config
-  Node Reset; broader fixture coverage is still unknown.
+  Node Reset; broader fixture coverage is still unknown. (The old `pair-test`
+  diagnostic alias was not carried into the Swift port.)
 - `./bin/amaran proxy-test` launches `BluetoothProbe.app`, subscribes to
   Mesh Proxy Data Out `0x2ADE`, and writes a public sample Proxy PDU to Mesh
   Proxy Data In `0x2ADD`. It does not use local mesh keys or control the light.
@@ -352,9 +351,8 @@ Development notes:
   List/Status, and Config Model App Status, but must not print the DeviceKey.
 - `./bin/amaran configure-test` chains the current Config steps
   from local state: Composition Data Get, AppKey Get, optional AppKey Add when
-  AppKey index 0 is absent, and Model App Bind. `pair-test` wraps
-  provisioning and configuration into one guarded command for unprovisioned
-  fixtures, but it is still a diagnostic flow rather than polished pairing UI.
+  AppKey index 0 is absent, and Model App Bind. `pair` wraps provisioning and
+  configuration into one guarded command for unprovisioned fixtures.
 - `./bin/amaran join-capture` uses the helper's peripheral-manager path, not the
   central Mesh Proxy path. It advertises only the Mesh Provisioning service UUID
   and local name because macOS CoreBluetooth does not expose the full service
@@ -402,18 +400,13 @@ Development notes:
   builders, DevKey proxy wrapping for Config messages, segmented lower transport
   access PDU assembly/reassembly, Composition Data Status decoding, Config
   AppKey List decoding, Segment Acknowledgment building/decoding, and fake-key
-  `state.json` payload construction:
-  `swiftc native_mesh_crypto.swift native_mesh_config.swift native_mesh_provisioning.swift native_mesh_state.swift native_telink_control.swift tests/native_mesh_crypto_tests.swift -o /tmp/amaran-mesh-tests`
+  `state.json` payload construction (`npm run test:mesh`):
+  `swiftc Sources/BluetoothProbe/native_mesh_crypto.swift Sources/BluetoothProbe/native_mesh_config.swift Sources/BluetoothProbe/native_mesh_provisioning.swift Sources/BluetoothProbe/native_mesh_state.swift Sources/BluetoothProbe/native_telink_control.swift tests/native_mesh_crypto_tests.swift -o /tmp/amaran-mesh-tests`
   then `/tmp/amaran-mesh-tests`.
 - Run `npm test` for the default local regression gate. It combines
-  `test:cli-wrapper` with `test:mesh`.
-- Test non-BLE CLI wrapper guards with `npm run test:cli-wrapper`. This covers
-  `pair --dry-run`, `--state-path`, help text, and invalid `--dry-run`
-  routing without launching `BluetoothProbe.app`, and checks that fake
-  mesh/app/device keys are not printed by safe wrapper commands.
-- For TUI-only syntax checks, run
-  `python3 -m py_compile scripts/amaran-tui scripts/scene-store`; this does
-  not install Textual or launch BLE.
+  `test:core` (`swift test` — the AmaranCore/AmaranCLI unit suites, including
+  state validation, control-spec grammar, capabilities, daemon protocol, and
+  iOS-backup crypto RFC vectors) with `test:mesh`.
 - Config AppKey Add is longer than one unsegmented access message after TransMIC;
   send it only through the Config AppKey Add diagnostic, which uses the
   segmented send path and waits for the expected Segment Acknowledgment.
