@@ -10,11 +10,17 @@ public enum DaemonClientError: Error, CustomStringConvertible {
     public var description: String {
         switch self {
         case .metadataMissing: return "daemon metadata file is missing"
-        case .connectFailed(let m): return "daemon connect failed: \(m)"
-        case .ioFailed(let m): return "daemon io failed: \(m)"
+        case .connectFailed(let message): return "daemon connect failed: \(message)"
+        case .ioFailed(let message): return "daemon io failed: \(message)"
         case .emptyResponse: return "daemon returned an empty response"
         }
     }
+}
+
+/// Decoded form of the daemon metadata file (`daemon.json`).
+private struct DaemonMetadata: Decodable {
+    let socketPath: String
+    enum CodingKeys: String, CodingKey { case socketPath = "socket_path" }
 }
 
 /// Talks to the runtime daemon over its Unix domain socket. The socket path is
@@ -30,14 +36,9 @@ public struct DaemonClient {
         self.appPath = appPath
     }
 
-    private struct Metadata: Decodable {
-        let socketPath: String
-        enum CodingKeys: String, CodingKey { case socketPath = "socket_path" }
-    }
-
     private func readSocketPath() throws -> String {
         guard let data = FileManager.default.contents(atPath: metadataPath),
-            let metadata = try? JSONDecoder().decode(Metadata.self, from: data),
+            let metadata = try? JSONDecoder().decode(DaemonMetadata.self, from: data),
             !metadata.socketPath.isEmpty
         else {
             throw DaemonClientError.metadataMissing
@@ -48,18 +49,18 @@ public struct DaemonClient {
     /// Sends one request and returns the decoded response.
     public func exchange(_ request: DaemonRequest, timeout: TimeInterval) throws -> DaemonResponse {
         let socketPath = try readSocketPath()
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else {
+        let fileDescriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fileDescriptor >= 0 else {
             throw DaemonClientError.connectFailed("socket() failed")
         }
-        defer { close(fd) }
+        defer { close(fileDescriptor) }
 
-        setTimeout(fd, SO_RCVTIMEO, timeout)
-        setTimeout(fd, SO_SNDTIMEO, timeout)
+        setTimeout(fileDescriptor, SO_RCVTIMEO, timeout)
+        setTimeout(fileDescriptor, SO_SNDTIMEO, timeout)
 
-        try connect(fd, to: socketPath)
-        try writeAll(fd, try DaemonProtocol.encodeRequest(request))
-        let responseData = try readLine(fd)
+        try connect(fileDescriptor, to: socketPath)
+        try writeAll(fileDescriptor, try DaemonProtocol.encodeRequest(request))
+        let responseData = try readLine(fileDescriptor)
         guard !responseData.isEmpty else {
             throw DaemonClientError.emptyResponse
         }
@@ -68,7 +69,7 @@ public struct DaemonClient {
 
     /// True if a daemon is reachable and answers `ping` with `ok`.
     public func ping(timeout: TimeInterval = 0.5) -> Bool {
-        (try? exchange(.ping, timeout: timeout))?.ok ?? false
+        (try? exchange(.ping, timeout: timeout))?.succeeded ?? false
     }
 
     /// Ensures a daemon is running, spawning one and polling up to `deadline`
@@ -96,14 +97,14 @@ public struct DaemonClient {
 
     // MARK: - POSIX socket helpers
 
-    private func setTimeout(_ fd: Int32, _ option: Int32, _ seconds: TimeInterval) {
-        var tv = timeval(
+    private func setTimeout(_ fileDescriptor: Int32, _ option: Int32, _ seconds: TimeInterval) {
+        var timeoutValue = timeval(
             tv_sec: Int(seconds),
             tv_usec: Int32((seconds - Double(Int(seconds))) * 1_000_000))
-        setsockopt(fd, SOL_SOCKET, option, &tv, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(fileDescriptor, SOL_SOCKET, option, &timeoutValue, socklen_t(MemoryLayout<timeval>.size))
     }
 
-    private func connect(_ fd: Int32, to path: String) throws {
+    private func connect(_ fileDescriptor: Int32, to path: String) throws {
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
         let pathCapacity = MemoryLayout.size(ofValue: addr.sun_path)
@@ -117,7 +118,7 @@ public struct DaemonClient {
         let len = socklen_t(MemoryLayout<sockaddr_un>.size)
         let result = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                Darwin.connect(fd, $0, len)
+                Darwin.connect(fileDescriptor, $0, len)
             }
         }
         guard result == 0 else {
@@ -125,12 +126,12 @@ public struct DaemonClient {
         }
     }
 
-    private func writeAll(_ fd: Int32, _ data: Data) throws {
+    private func writeAll(_ fileDescriptor: Int32, _ data: Data) throws {
         try data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             var offset = 0
             let base = raw.baseAddress!
             while offset < data.count {
-                let written = Darwin.write(fd, base + offset, data.count - offset)
+                let written = Darwin.write(fileDescriptor, base + offset, data.count - offset)
                 if written <= 0 {
                     throw DaemonClientError.ioFailed(String(cString: strerror(errno)))
                 }
@@ -139,11 +140,11 @@ public struct DaemonClient {
         }
     }
 
-    private func readLine(_ fd: Int32) throws -> Data {
+    private func readLine(_ fileDescriptor: Int32) throws -> Data {
         var result = Data()
         var buffer = [UInt8](repeating: 0, count: 65536)
         while true {
-            let count = Darwin.read(fd, &buffer, buffer.count)
+            let count = Darwin.read(fileDescriptor, &buffer, buffer.count)
             if count < 0 {
                 throw DaemonClientError.ioFailed(String(cString: strerror(errno)))
             }

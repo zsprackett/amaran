@@ -26,7 +26,7 @@ enum ControlSupport {
     /// `--json`, a CLIError on failure.
     static func sendControl(_ runner: ControlRunner, spec: String, json: Bool) throws {
         let response = try runner.control(spec: spec)
-        guard response.ok else {
+        guard response.succeeded else {
             throw CLIError(ControlResult.failureDetail(response, kind: "control"))
         }
         if json, let data = response.data {
@@ -80,7 +80,7 @@ public struct StatusCommand: ParsableCommand {
         let opts = options.resolve()
         try ControlSupport.requireState(opts.statePath, kind: "status")
         let response = try ControlSupport.runner(opts).status()
-        guard response.ok, let data = response.data else {
+        guard response.succeeded, let data = response.data else {
             throw CLIError(ControlResult.failureDetail(response, kind: "status"))
         }
         if opts.json {
@@ -97,7 +97,7 @@ public struct CctCommand: ParsableCommand {
     @OptionGroup var options: GlobalOptions
     @Argument(help: "Color temperature in Kelvin.") var kelvin: Int
     @Option(name: .customLong("intensity"), help: "Brightness percent (0-100).") var intensity: Double?
-    @Option(name: .customLong("gm"), help: "Green-magenta correction (0-20).") var gm: Int?
+    @Option(name: .customLong("gm"), help: "Green-magenta correction (0-20).") var greenMagenta: Int?
     public init() {}
     public func run() throws {
         let opts = options.resolve()
@@ -107,16 +107,16 @@ public struct CctCommand: ParsableCommand {
         let runner = ControlSupport.runner(opts)
 
         var current: StatusReport.CurrentValues?
-        if ControlSpecBuilder.cctNeedsStatus(intensityPercent: intensity, gm: gm, fixture: fixture) {
+        if ControlSpecBuilder.cctNeedsStatus(intensityPercent: intensity, gm: greenMagenta, fixture: fixture) {
             let response = try runner.status()
-            guard response.ok, let data = response.data else {
+            guard response.succeeded, let data = response.data else {
                 throw CLIError(ControlResult.failureDetail(response, kind: "status"))
             }
             current = StatusReport.currentValues(parsed: try StatusReport.statusObject(data))
         }
 
         let built = try ControlSpecBuilder.cctSpec(
-            requestedKelvin: kelvin, intensityPercent: intensity, gm: gm,
+            requestedKelvin: kelvin, intensityPercent: intensity, gm: greenMagenta,
             fixture: fixture, current: current)
         if let warning = built.clampWarning {
             FileHandle.standardError.write(Data("amaran: \(warning)\n".utf8))
@@ -141,7 +141,7 @@ public struct GmCommand: ParsableCommand {
         }
         let runner = ControlSupport.runner(opts)
         let response = try runner.status()
-        guard response.ok, let data = response.data else {
+        guard response.succeeded, let data = response.data else {
             throw CLIError(ControlResult.failureDetail(response, kind: "status"))
         }
         let current = StatusReport.currentValues(parsed: try StatusReport.statusObject(data))

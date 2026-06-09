@@ -25,7 +25,7 @@ struct LaunchAgentTests {
             "/repo/AmaranHelper.app/Contents/MacOS/AmaranHelper",
             "--daemon",
             "--daemon-port-file",
-            "/Users/test/Library/Application Support/amaran-cli/daemon.json",
+            "/Users/test/Library/Application Support/amaran-cli/daemon.json"
         ])
     }
 

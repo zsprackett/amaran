@@ -54,19 +54,26 @@ struct NativeProvisionedFixtureState {
     }
 }
 
+/// Mesh network and application keys for a provisioned state payload.
+struct NativeMeshStateKeys {
+    let netKey: [UInt8]
+    let appKey: [UInt8]
+}
+
 struct NativeMeshState {
     static let schemaVersion = 1
 
     static func provisionedPayload(
         meshUUID: String,
-        netKey: [UInt8],
-        appKey: [UInt8],
+        keys: NativeMeshStateKeys,
         fixture: NativeProvisionedFixtureState,
         provisionedAt: String,
         ivIndex: UInt32,
         sequenceNext: Int = 1,
         sourceAddress: UInt16 = 3
     ) throws -> [String: Any] {
+        let netKey = keys.netKey
+        let appKey = keys.appKey
         try validateAesKey(netKey, label: "network key")
         try validateAesKey(appKey, label: "application key")
         guard !meshUUID.isEmpty else {
@@ -80,14 +87,10 @@ struct NativeMeshState {
         }
 
         let fixturePayload = try fixturePayload(fixture)
-        let runtimeSourceAddress: UInt16
-        if sourceAddress != 1 && sourceAddress != fixture.nodeAddress {
-            runtimeSourceAddress = sourceAddress
-        } else if fixture.nodeAddress != 3 {
-            runtimeSourceAddress = 3
-        } else {
-            runtimeSourceAddress = 4
-        }
+        let runtimeSourceAddress = runtimeSourceAddress(
+            sourceAddress: sourceAddress,
+            nodeAddress: fixture.nodeAddress
+        )
         let telinkSourceAddress: UInt16 = fixture.nodeAddress == 1 ? runtimeSourceAddress : 1
         let deviceUUIDHex = NativeMeshCrypto.hex(fixture.deviceUUID)
 
@@ -98,7 +101,7 @@ struct NativeMeshState {
             "fixtures_ordered_list": "[]",
             "scenes_ordered_list": "[]",
             "update_time": provisionedAt,
-            "state": 0,
+            "state": 0
         ]
         let payload: [String: Any] = [
             "schema_version": schemaVersion,
@@ -106,7 +109,7 @@ struct NativeMeshState {
             "source": [
                 "type": "native_provisioning",
                 "provisioned_at": provisionedAt,
-                "device_uuid": deviceUUIDHex,
+                "device_uuid": deviceUUIDHex
             ],
             "mesh": mesh,
             "fixtures": [fixturePayload],
@@ -116,11 +119,20 @@ struct NativeMeshState {
                 "telink_source_address": Int(telinkSourceAddress),
                 "sequence_next": sequenceNext,
                 "updated_at": provisionedAt,
-                "last_reserved_by": "provisioning",
-            ],
+                "last_reserved_by": "provisioning"
+            ]
         ]
         try validatePayload(payload)
         return payload
+    }
+
+    private static func runtimeSourceAddress(sourceAddress: UInt16, nodeAddress: UInt16) -> UInt16 {
+        if sourceAddress != 1 && sourceAddress != nodeAddress {
+            return sourceAddress
+        } else if nodeAddress != 3 {
+            return 3
+        }
+        return 4
     }
 
     static func appendingProvisionedFixturePayload(
@@ -146,7 +158,9 @@ struct NativeMeshState {
         if fixtures.contains(where: { intValue($0["node_address"]) == nodeAddress }) {
             throw NativeMeshStateError.invalidPayload("fixture node_address already exists")
         }
-        if fixtures.contains(where: { ($0["device_uuid"] as? String)?.caseInsensitiveCompare(deviceUUIDHex) == .orderedSame }) {
+        if fixtures.contains(where: {
+            ($0["device_uuid"] as? String)?.caseInsensitiveCompare(deviceUUIDHex) == .orderedSame
+        }) {
             throw NativeMeshStateError.invalidPayload("fixture device_uuid already exists")
         }
 
@@ -160,7 +174,7 @@ struct NativeMeshState {
             "type": "native_provisioning_append",
             "provisioned_at": provisionedAt,
             "device_uuid": deviceUUIDHex,
-            "node_address": nodeAddress,
+            "node_address": nodeAddress
         ]
         payload["mesh"] = mesh
         payload["fixtures"] = fixtures
@@ -209,37 +223,50 @@ struct NativeMeshState {
         }
         var occupied = Set<Int>()
         for (index, fixture) in fixtures.enumerated() {
-            guard fixture["node_address"] != nil else {
-                throw NativeMeshStateError.invalidPayload("fixture \(index + 1) missing node_address")
-            }
-            guard let nodeAddress = intValue(fixture["node_address"]), (1...0x7fff).contains(nodeAddress) else {
-                throw NativeMeshStateError.invalidPayload("fixture \(index + 1) has invalid node_address")
-            }
-            if let macValue = fixture["mac_address"] {
-                guard let macAddress = macValue as? String else {
-                    throw NativeMeshStateError.invalidPayload("fixture \(index + 1) has invalid mac_address")
-                }
-                if !macAddress.isEmpty {
-                    _ = try normalizedMacAddress(macAddress)
-                }
-            }
-            try validateOptionalHexString(fixture["device_key"] as? String, bytes: 16, label: "fixture device_key")
-            try validateOptionalHexString(fixture["device_uuid"] as? String, bytes: 16, label: "fixture device_uuid")
-            try validateOptionalHexString(fixture["composition_data"] as? String, label: "fixture composition_data")
-            let elementCount = try fixtureElementCount(fixture)
-            for offset in 0..<elementCount {
-                let address = nodeAddress + offset
-                guard address <= 0x7fff else {
-                    throw NativeMeshStateError.invalidPayload("fixture \(index + 1) element address exceeds unicast range")
-                }
-                guard !occupied.contains(address) else {
-                    throw NativeMeshStateError.invalidPayload("duplicate fixture element address \(address)")
-                }
-                occupied.insert(address)
-            }
+            try validateFixture(fixture, index: index, occupied: &occupied)
         }
 
-        guard let runtime = payload["runtime"] as? [String: Any] else {
+        try validateRuntime(payload["runtime"])
+    }
+
+    private static func validateFixture(
+        _ fixture: [String: Any],
+        index: Int,
+        occupied: inout Set<Int>
+    ) throws {
+        guard fixture["node_address"] != nil else {
+            throw NativeMeshStateError.invalidPayload("fixture \(index + 1) missing node_address")
+        }
+        guard let nodeAddress = intValue(fixture["node_address"]), (1...0x7fff).contains(nodeAddress) else {
+            throw NativeMeshStateError.invalidPayload("fixture \(index + 1) has invalid node_address")
+        }
+        if let macValue = fixture["mac_address"] {
+            guard let macAddress = macValue as? String else {
+                throw NativeMeshStateError.invalidPayload("fixture \(index + 1) has invalid mac_address")
+            }
+            if !macAddress.isEmpty {
+                _ = try normalizedMacAddress(macAddress)
+            }
+        }
+        try validateOptionalHexString(fixture["device_key"] as? String, bytes: 16, label: "fixture device_key")
+        try validateOptionalHexString(fixture["device_uuid"] as? String, bytes: 16, label: "fixture device_uuid")
+        try validateOptionalHexString(fixture["composition_data"] as? String, label: "fixture composition_data")
+        let elementCount = try fixtureElementCount(fixture)
+        for offset in 0..<elementCount {
+            let address = nodeAddress + offset
+            guard address <= 0x7fff else {
+                throw NativeMeshStateError.invalidPayload(
+                    "fixture \(index + 1) element address exceeds unicast range")
+            }
+            guard !occupied.contains(address) else {
+                throw NativeMeshStateError.invalidPayload("duplicate fixture element address \(address)")
+            }
+            occupied.insert(address)
+        }
+    }
+
+    private static func validateRuntime(_ runtimeValue: Any?) throws {
+        guard let runtime = runtimeValue as? [String: Any] else {
             throw NativeMeshStateError.invalidPayload("missing runtime")
         }
         guard let ivIndex = intValue(runtime["iv_index"]), (0...0xffff_ffff).contains(ivIndex) else {
@@ -248,7 +275,8 @@ struct NativeMeshState {
         guard let sourceAddress = intValue(runtime["source_address"]), (1...0x7fff).contains(sourceAddress) else {
             throw NativeMeshStateError.invalidPayload("runtime has invalid source_address")
         }
-        guard let telinkSourceAddress = intValue(runtime["telink_source_address"]), (1...0x7fff).contains(telinkSourceAddress) else {
+        guard let telinkSourceAddress = intValue(runtime["telink_source_address"]),
+            (1...0x7fff).contains(telinkSourceAddress) else {
             throw NativeMeshStateError.invalidPayload("runtime has invalid telink_source_address")
         }
         guard let sequenceNext = intValue(runtime["sequence_next"]), (0...0x00ff_fffe).contains(sequenceNext) else {
@@ -278,123 +306,4 @@ struct NativeMeshState {
         return parts.joined(separator: ":")
     }
 
-    private static func fixtureName(
-        code: String?,
-        macAddress: String?,
-        deviceUUIDHex: String,
-        nodeAddress: UInt16
-    ) -> String {
-        let suffix = macAddress?.filter { $0 != ":" }.suffix(6) ?? deviceUUIDHex.uppercased().suffix(6)
-        if let code, !code.isEmpty {
-            return "\(code)-\(suffix)"
-        }
-        return suffix.isEmpty ? "fixture-\(nodeAddress)" : String(suffix)
-    }
-
-    private static func fixturePayload(_ fixture: NativeProvisionedFixtureState) throws -> [String: Any] {
-        try validateAesKey(fixture.deviceKey, label: "device key")
-        guard fixture.deviceUUID.count == 16 else {
-            throw NativeMeshStateError.invalidLength("device UUID must be 16 bytes")
-        }
-        guard !fixture.uuid.isEmpty else {
-            throw NativeMeshStateError.invalidParameter("fixture UUID is required")
-        }
-        guard (1...0x7fff).contains(Int(fixture.nodeAddress)) else {
-            throw NativeMeshStateError.invalidParameter("fixture node address must be a non-zero unicast address")
-        }
-        if let elementCount = fixture.elementCount, !(1...255).contains(elementCount) {
-            throw NativeMeshStateError.invalidParameter("fixture element_count must be 1..255")
-        }
-
-        let macAddress = try normalizedOptionalMacAddress(fixture.macAddress)
-        let deviceUUIDHex = NativeMeshCrypto.hex(fixture.deviceUUID)
-        var payload: [String: Any] = [
-            "uuid": fixture.uuid,
-            "mac_address": macAddress ?? "",
-            "code": fixture.code ?? "",
-            "device_key": NativeMeshCrypto.hex(fixture.deviceKey),
-            "device_uuid": deviceUUIDHex,
-            "composition_data": NativeMeshCrypto.hex(fixture.compositionData ?? []),
-            "fast_provision_supported": 0,
-            "control_hw_version": "",
-            "name": fixture.name ?? fixtureName(
-                code: fixture.code,
-                macAddress: macAddress,
-                deviceUUIDHex: deviceUUIDHex,
-                nodeAddress: fixture.nodeAddress
-            ),
-            "node_address": Int(fixture.nodeAddress),
-            "update_time": fixture.updateTime,
-            "state": 0,
-            "control_software_version": "",
-            "driver_software_version": "",
-            "driver_hardware_version": "",
-            "ble_software_version": "",
-            "ble_hardware_version": "",
-        ]
-        if let elementCount = fixture.elementCount {
-            payload["element_count"] = elementCount
-        }
-        if macAddress == nil {
-            payload["mac_address_source"] = "unavailable_corebluetooth"
-        }
-        return payload
-    }
-
-    private static func validateAesKey(_ key: [UInt8], label: String) throws {
-        guard key.count == 16 else {
-            throw NativeMeshStateError.invalidLength("\(label) must be 16 bytes")
-        }
-    }
-
-    private static func validateHexString(_ value: String?, bytes: Int, label: String) throws {
-        guard let value, value.count == bytes * 2, value.allSatisfy({ $0.isHexDigit }) else {
-            throw NativeMeshStateError.invalidPayload("\(label) must be \(bytes) bytes of hex")
-        }
-    }
-
-    private static func validateOptionalHexString(_ value: String?, label: String) throws {
-        guard let value, !value.isEmpty else {
-            return
-        }
-        guard value.count % 2 == 0, value.allSatisfy({ $0.isHexDigit }) else {
-            throw NativeMeshStateError.invalidPayload("\(label) must be hex")
-        }
-    }
-
-    private static func validateOptionalHexString(_ value: String?, bytes: Int, label: String) throws {
-        guard let value, !value.isEmpty else {
-            return
-        }
-        try validateHexString(value, bytes: bytes, label: label)
-    }
-
-    private static func fixtureElementCount(_ fixture: [String: Any]) throws -> Int {
-        if let compositionHex = fixture["composition_data"] as? String, !compositionHex.isEmpty {
-            let compositionBytes = try NativeMeshCrypto.bytes(hex: compositionHex)
-            if let composition = try? NativeMeshConfig.compositionDataPage0(compositionBytes) {
-                return max(1, composition.elements.count)
-            }
-        }
-        if let elementCount = intValue(fixture["element_count"]) {
-            guard (1...255).contains(elementCount) else {
-                throw NativeMeshStateError.invalidPayload("fixture element_count must be 1..255")
-            }
-            return elementCount
-        }
-        return 1
-    }
-
-    private static func intValue(_ value: Any?) -> Int? {
-        if let value = value as? Int {
-            return value
-        }
-        if let value = value as? NSNumber {
-            return value.intValue
-        }
-        if let value = value as? String {
-            return Int(value)
-        }
-        return nil
-    }
 }

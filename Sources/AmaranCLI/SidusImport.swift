@@ -28,9 +28,9 @@ public struct SidusCandidate {
         public let fixtureCount: Int
         public let macCount: Int
         public let deviceKeyCount: Int
-        public static func < (a: Score, b: Score) -> Bool {
-            (a.fixtureCount, a.macCount, a.deviceKeyCount)
-                < (b.fixtureCount, b.macCount, b.deviceKeyCount)
+        public static func < (lhs: Score, rhs: Score) -> Bool {
+            (lhs.fixtureCount, lhs.macCount, lhs.deviceKeyCount)
+                < (rhs.fixtureCount, rhs.macCount, rhs.deviceKeyCount)
         }
     }
 }
@@ -156,7 +156,7 @@ public enum SidusImport {
                 "imported_at": .string(now),
                 "mesh_name": .string(candidate.meshName),
                 "mesh_uuid": .string(candidate.meshUUID),
-                "mesh_file": .string(candidate.relativePath),
+                "mesh_file": .string(candidate.relativePath)
             ]),
             mesh: Mesh(uuid: candidate.meshUUID, netKey: candidate.netKey,
                        appKey: candidate.appKey, updateTime: now),
@@ -212,8 +212,8 @@ public enum SidusImport {
     }
 
     private static func nonEmpty(_ value: JSONValue?) -> String? {
-        guard let s = value?.stringValue, !s.isEmpty else { return nil }
-        return s
+        guard let string = value?.stringValue, !string.isEmpty else { return nil }
+        return string
     }
 
     private static func normalizeHex(_ value: JSONValue?, bytes: Int?) -> String {
@@ -230,7 +230,7 @@ public enum SidusImport {
     }
 
     private static func parseAddress(_ value: JSONValue?) -> Int? {
-        if let i = value?.intValue { return i }
+        if let intValue = value?.intValue { return intValue }
         guard let text = value?.stringValue?.trimmingCharacters(in: .whitespaces), !text.isEmpty else {
             return nil
         }

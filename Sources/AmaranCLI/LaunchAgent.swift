@@ -18,7 +18,7 @@ public enum LaunchAgent {
             "KeepAlive": true,
             "ProcessType": "Background",
             "StandardOutPath": logDir + "/daemon.out.log",
-            "StandardErrorPath": logDir + "/daemon.err.log",
+            "StandardErrorPath": logDir + "/daemon.err.log"
         ]
         return try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
     }

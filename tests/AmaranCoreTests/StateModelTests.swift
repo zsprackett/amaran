@@ -5,7 +5,7 @@ import Testing
 struct StateModelTests {
     // Representative provisioned state with an extra/unknown fixture field
     // ("vendor_blob") plus the version strings the native writer emits.
-    private let provisionedJSON = """
+    private let provisionedJSON = Data("""
     {
       "schema_version": 1,
       "synced_at": "2024-01-15T10:30:45Z",
@@ -60,7 +60,7 @@ struct StateModelTests {
         }
       }
     }
-    """.data(using: .utf8)!
+    """.utf8)
 
     private func decode(_ data: Data) throws -> State {
         try JSONDecoder().decode(State.self, from: data)
@@ -91,7 +91,7 @@ struct StateModelTests {
     }
 
     @Test func decodesControlOnlyFixtureWithoutDeviceKey() throws {
-        let json = """
+        let json = Data("""
         {
           "schema_version": 1, "synced_at": "t",
           "source": {"type": "mesh_join_import", "control_only": true},
@@ -105,7 +105,7 @@ struct StateModelTests {
           "runtime": {"iv_index": 0, "source_address": 3, "telink_source_address": 1,
                       "sequence_next": 1, "updated_at": "t"}
         }
-        """.data(using: .utf8)!
+        """.utf8)
         let state = try decode(json)
         #expect(state.fixtures[0].deviceKey == nil)
         #expect(state.fixtures[0].deviceUUID == nil)

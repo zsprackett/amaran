@@ -27,7 +27,7 @@ struct CLIEnvironmentTests {
                 "AMARAN_DAEMON_PORT_FILE": "/tmp/d.json",
                 "AMARAN_DAEMON_DISABLE": "1",
                 "AMARAN_TIMEOUT": "45",
-                "AMARAN_NODE_ID": "big",
+                "AMARAN_NODE_ID": "big"
             ],
             home: home)
         #expect(env.statePath == "/tmp/s.json")

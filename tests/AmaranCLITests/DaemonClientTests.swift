@@ -70,7 +70,7 @@ struct DaemonClientTests {
         let client = DaemonClient(metadataPath: metadataPath, appPath: "/nonexistent")
         let response = try client.exchange(.ping, timeout: 2.0)
 
-        #expect(response.ok == true)
+        #expect(response.succeeded == true)
         // round-trip: the stub saw exactly our framed ping request
         #expect(server.receivedRequest == "{\"action\":\"ping\"}\n")
     }

@@ -7,13 +7,14 @@ public struct DiscoverFixture: Codable, Equatable {
     public let macSuffix: String
     public let intensity: Double?
     public let cct: Int?
-    public let gm: Int?
+    public let greenMagenta: Int?
     public let sleepMode: Int?
     public let controlOnly: Bool
     enum CodingKeys: String, CodingKey {
         case address, name
         case macSuffix = "mac_suffix"
-        case intensity, cct, gm
+        case intensity, cct
+        case greenMagenta = "gm"
         case sleepMode = "sleep_mode"
         case controlOnly = "control_only"
     }
@@ -26,7 +27,11 @@ public struct DiscoverMiss: Codable, Equatable {
 
 public struct SourceRelocation: Codable, Equatable {
     public let from: Int
-    public let to: Int
+    public let toAddress: Int
+    enum CodingKeys: String, CodingKey {
+        case from
+        case toAddress = "to"
+    }
 }
 
 /// Pure discovery logic, ported from `scripts/discover-existing-mesh`. The live
@@ -94,7 +99,7 @@ public enum DiscoverScan {
         state.runtime.sourceAddress = replacement
         state.runtime.updatedAt = now
         state.runtime.lastReservedBy = "discover-source-relocation"
-        return SourceRelocation(from: source, to: replacement)
+        return SourceRelocation(from: source, toAddress: replacement)
     }
 
     /// Maps batch proxy notifications to their source address's telink CCT block.
@@ -116,13 +121,13 @@ public enum DiscoverScan {
         let intensity = cctObj["intensity_percent"]?.doubleValue
             ?? cctObj["intensity"]?.doubleValue.map { $0 / 10 }
         var kelvin = cctObj["cct_kelvin"]?.intValue ?? cctObj["cct"]?.intValue
-        if let k = kelvin, k < 1000 { kelvin = k * 10 }
+        if let kelvinValue = kelvin, kelvinValue < 1000 { kelvin = kelvinValue * 10 }
         let name = fixture.map { Capabilities.label($0) } ?? "fixture-\(address)"
         return DiscoverFixture(
             address: address, name: name,
             macSuffix: MacAddress.suffix(fixture?.macAddress),
             intensity: intensity, cct: kelvin,
-            gm: cctObj["gm_decoded"]?.intValue ?? cctObj["gm"]?.intValue,
+            greenMagenta: cctObj["gm_decoded"]?.intValue ?? cctObj["gm"]?.intValue,
             sleepMode: cctObj["sleep_mode"]?.intValue,
             controlOnly: fixture?.controlOnly ?? true)
     }
@@ -143,10 +148,10 @@ public enum DiscoverScan {
     }
 
     private static func parseIntBase0(_ raw: String) -> Int? {
-        let s = raw.trimmingCharacters(in: .whitespaces).lowercased()
-        for (prefix, radix) in [("0x", 16), ("0o", 8), ("0b", 2)] {
-            if s.hasPrefix(prefix) { return Int(s.dropFirst(2), radix: radix) }
+        let trimmed = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        for (prefix, radix) in [("0x", 16), ("0o", 8), ("0b", 2)] where trimmed.hasPrefix(prefix) {
+            return Int(trimmed.dropFirst(2), radix: radix)
         }
-        return Int(s)
+        return Int(trimmed)
     }
 }

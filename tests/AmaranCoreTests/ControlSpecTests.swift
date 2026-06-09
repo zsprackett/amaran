@@ -3,8 +3,8 @@ import Testing
 
 struct ControlSpecTests {
     @Test func parsesSimpleCommands() throws {
-        #expect(try ControlSpec.parse("on") == .on)
-        #expect(try ControlSpec.parse("off") == .off)
+        #expect(try ControlSpec.parse("on") == .turnOn)
+        #expect(try ControlSpec.parse("off") == .turnOff)
         #expect(try ControlSpec.parse("status") == .status)
     }
 
@@ -25,7 +25,7 @@ struct ControlSpecTests {
 
     @Test func parsesCct() throws {
         #expect(try ControlSpec.parse("cct:3200:50:10:1")
-            == .cct(kelvin: "3200", intensity: "50", gm: 10, gmFlag: 1))
+            == .cct(kelvin: "3200", intensity: "50", greenMagenta: 10, gmFlag: 1))
     }
 
     @Test func cctRequiresIntegerGmFields() {

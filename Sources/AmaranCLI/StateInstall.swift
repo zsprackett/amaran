@@ -48,10 +48,14 @@ public enum StateInstall {
             throw CLIError("state file is missing runtime data")
         }
 
-        for field in ["uuid", "net_key", "app_key"] {
-            if !isTruthy(mesh[field]) {
-                throw CLIError("state mesh data missing field: \(field)")
-            }
+        try validateMesh(mesh)
+        try validateFixtures(fixtures)
+        try validateRuntime(runtime)
+    }
+
+    private static func validateMesh(_ mesh: [String: JSONValue]) throws {
+        for field in ["uuid", "net_key", "app_key"] where !isTruthy(mesh[field]) {
+            throw CLIError("state mesh data missing field: \(field)")
         }
         guard isHexBytes(mesh["net_key"]?.stringValue, bytes: 16) else {
             throw CLIError("state mesh data has invalid net_key")
@@ -59,42 +63,48 @@ public enum StateInstall {
         guard isHexBytes(mesh["app_key"]?.stringValue, bytes: 16) else {
             throw CLIError("state mesh data has invalid app_key")
         }
-        guard !fixtures.isEmpty else { throw CLIError("state file has no fixtures") }
+    }
 
+    private static func validateFixtures(_ fixtures: [JSONValue]) throws {
+        guard !fixtures.isEmpty else { throw CLIError("state file has no fixtures") }
         for (offset, item) in fixtures.enumerated() {
             let index = offset + 1
             guard let fixture = item.objectValue else {
                 throw CLIError("state fixture #\(index) must be a JSON object")
             }
-            for field in ["node_address", "device_key", "device_uuid"] {
-                if isEmpty(fixture[field]) {
-                    throw CLIError("state fixture #\(index) missing field: \(field)")
-                }
-            }
-            guard let address = fixture["node_address"]?.intValue else {
-                throw CLIError("state fixture #\(index) has invalid node_address")
-            }
-            guard (1...0x7FFF).contains(address) else {
-                throw CLIError("state fixture #\(index) has non-unicast node_address")
-            }
-            guard isHexBytes(fixture["device_key"]?.stringValue, bytes: 16) else {
-                throw CLIError("state fixture #\(index) has invalid device_key")
-            }
-            guard isHexBytes(fixture["device_uuid"]?.stringValue, bytes: 16) else {
-                throw CLIError("state fixture #\(index) has invalid device_uuid")
-            }
-            if let comp = fixture["composition_data"], !isEmpty(comp) {
-                guard let s = comp.stringValue, !s.isEmpty, s.count % 2 == 0,
-                    s.allSatisfy({ $0.isHexDigit }) else {
-                    throw CLIError("state fixture #\(index) has invalid composition_data")
-                }
-            }
-            let mac = (fixture["mac_address"]?.stringValue ?? "").filter { $0.isHexDigit }.uppercased()
-            if !mac.isEmpty, mac.count != 12 {
-                throw CLIError("state fixture #\(index) has invalid mac_address")
+            try validateFixture(fixture, index: index)
+        }
+    }
+
+    private static func validateFixture(_ fixture: [String: JSONValue], index: Int) throws {
+        for field in ["node_address", "device_key", "device_uuid"] where isEmpty(fixture[field]) {
+            throw CLIError("state fixture #\(index) missing field: \(field)")
+        }
+        guard let address = fixture["node_address"]?.intValue else {
+            throw CLIError("state fixture #\(index) has invalid node_address")
+        }
+        guard (1...0x7FFF).contains(address) else {
+            throw CLIError("state fixture #\(index) has non-unicast node_address")
+        }
+        guard isHexBytes(fixture["device_key"]?.stringValue, bytes: 16) else {
+            throw CLIError("state fixture #\(index) has invalid device_key")
+        }
+        guard isHexBytes(fixture["device_uuid"]?.stringValue, bytes: 16) else {
+            throw CLIError("state fixture #\(index) has invalid device_uuid")
+        }
+        if let comp = fixture["composition_data"], !isEmpty(comp) {
+            guard let hex = comp.stringValue, !hex.isEmpty, hex.count % 2 == 0,
+                hex.allSatisfy({ $0.isHexDigit }) else {
+                throw CLIError("state fixture #\(index) has invalid composition_data")
             }
         }
+        let mac = (fixture["mac_address"]?.stringValue ?? "").filter { $0.isHexDigit }.uppercased()
+        if !mac.isEmpty, mac.count != 12 {
+            throw CLIError("state fixture #\(index) has invalid mac_address")
+        }
+    }
 
+    private static func validateRuntime(_ runtime: [String: JSONValue]) throws {
         guard inRange(runtime["iv_index"], 0, 0xFFFF_FFFF) else {
             throw CLIError("state runtime data has invalid iv_index")
         }
@@ -151,16 +161,16 @@ public enum StateInstall {
     private static func isEmpty(_ value: JSONValue?) -> Bool {
         switch value {
         case .none, .some(.null): return true
-        case .some(.string(let s)): return s.isEmpty
+        case .some(.string(let text)): return text.isEmpty
         default: return false
         }
     }
 
     private static func isTruthy(_ value: JSONValue?) -> Bool {
         switch value {
-        case .some(.string(let s)): return !s.isEmpty
-        case .some(.int(let i)): return i != 0
-        case .some(.bool(let b)): return b
+        case .some(.string(let text)): return !text.isEmpty
+        case .some(.int(let intValue)): return intValue != 0
+        case .some(.bool(let boolValue)): return boolValue
         case .none, .some(.null): return false
         default: return true
         }
@@ -171,9 +181,9 @@ public enum StateInstall {
         return value.count == bytes * 2 && value.allSatisfy { $0.isHexDigit }
     }
 
-    private static func inRange(_ value: JSONValue?, _ lo: Int, _ hi: Int) -> Bool {
+    private static func inRange(_ value: JSONValue?, _ low: Int, _ high: Int) -> Bool {
         guard let parsed = value?.intValue else { return false }
-        return lo <= parsed && parsed <= hi
+        return low <= parsed && parsed <= high
     }
 
     private static func describe(_ value: JSONValue) -> String {

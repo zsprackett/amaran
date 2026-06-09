@@ -196,48 +196,14 @@ public enum DoctorReport {
     // MARK: - Readiness
 
     private static func describeReadiness(_ state: DoctorState) -> DoctorReadiness {
-        var missing: [String] = []
-        var warnings: [String] = []
-        let checks = state.checks
-        let fixtureChecks = checks?.fixtures ?? []
-
-        if !state.usable {
-            missing.append("usable local state")
-        } else {
-            if (state.fixtureCount ?? 0) < 1 { missing.append("at least one fixture") }
-            if checks?.meshHasNetKey != true { missing.append("mesh NetKey in local state") }
-            if checks?.meshHasAppKey != true { missing.append("mesh AppKey in local state") }
-            if checks?.runtimeSourceAddressValid != true { missing.append("valid Config source address") }
-            if checks?.runtimeTelinkSourceAddressValid != true { missing.append("valid Telink runtime source address") }
-            if checks?.runtimeSequenceAvailable != true { missing.append("available sequence number") }
-            if fixtureChecks.isEmpty {
-                missing.append("fixture metadata")
-            } else {
-                if fixtureChecks.contains(where: { !$0.hasDeviceKey }) {
-                    warnings.append("fixture DeviceKey metadata missing; Config diagnostics and node reset are unavailable for those fixtures")
-                }
-                if fixtureChecks.contains(where: { !$0.hasDeviceUUID }) {
-                    warnings.append("fixture device UUID metadata missing for imported fixtures")
-                }
-                if fixtureChecks.contains(where: { !$0.hasCompositionData }) {
-                    warnings.append("composition data missing until configure-test fetches it")
-                }
-            }
-        }
+        let missing = missingRequirements(state)
+        let warnings = readinessWarnings(state)
 
         let runtimeReady = missing.isEmpty
         let nextStep = runtimeReady
             ? "runtime commands are ready"
-            : "run ./bin/amaran pair with an unprovisioned fixture, or install a valid local state file with ./bin/amaran state-install"
-
-        let pairingNext: String
-        if state.usable {
-            pairingNext = "run ./bin/amaran pair --add --dry-run to scan before adding another fixture to this studio state"
-        } else if state.exists {
-            pairingNext = "repair/install valid local state before using pair --add"
-        } else {
-            pairingNext = "run ./bin/amaran pair --dry-run before provisioning a factory-reset or unprovisioned fixture"
-        }
+            : "run ./bin/amaran pair with an unprovisioned fixture, "
+                + "or install a valid local state file with ./bin/amaran state-install"
 
         return DoctorReadiness(
             runtimeControlReady: runtimeReady,
@@ -251,7 +217,51 @@ public enum DoctorReport {
                 createsFirstState: !state.exists,
                 canAddFixture: state.usable,
                 requiresUnprovisionedFixture: true,
-                nextStep: pairingNext))
+                nextStep: pairingNextStep(state)))
+    }
+
+    private static func missingRequirements(_ state: DoctorState) -> [String] {
+        guard state.usable else { return ["usable local state"] }
+        let checks = state.checks
+        let fixtureChecks = checks?.fixtures ?? []
+        var missing: [String] = []
+        if (state.fixtureCount ?? 0) < 1 { missing.append("at least one fixture") }
+        if checks?.meshHasNetKey != true { missing.append("mesh NetKey in local state") }
+        if checks?.meshHasAppKey != true { missing.append("mesh AppKey in local state") }
+        if checks?.runtimeSourceAddressValid != true { missing.append("valid Config source address") }
+        if checks?.runtimeTelinkSourceAddressValid != true { missing.append("valid Telink runtime source address") }
+        if checks?.runtimeSequenceAvailable != true { missing.append("available sequence number") }
+        if fixtureChecks.isEmpty { missing.append("fixture metadata") }
+        return missing
+    }
+
+    private static func readinessWarnings(_ state: DoctorState) -> [String] {
+        guard state.usable else { return [] }
+        let fixtureChecks = state.checks?.fixtures ?? []
+        guard !fixtureChecks.isEmpty else { return [] }
+        var warnings: [String] = []
+        if fixtureChecks.contains(where: { !$0.hasDeviceKey }) {
+            warnings.append("fixture DeviceKey metadata missing; "
+                + "Config diagnostics and node reset are unavailable for those fixtures")
+        }
+        if fixtureChecks.contains(where: { !$0.hasDeviceUUID }) {
+            warnings.append("fixture device UUID metadata missing for imported fixtures")
+        }
+        if fixtureChecks.contains(where: { !$0.hasCompositionData }) {
+            warnings.append("composition data missing until configure-test fetches it")
+        }
+        return warnings
+    }
+
+    private static func pairingNextStep(_ state: DoctorState) -> String {
+        if state.usable {
+            return "run ./bin/amaran pair --add --dry-run to scan before "
+                + "adding another fixture to this studio state"
+        } else if state.exists {
+            return "repair/install valid local state before using pair --add"
+        } else {
+            return "run ./bin/amaran pair --dry-run before provisioning a factory-reset or unprovisioned fixture"
+        }
     }
 
     // MARK: - Human output
@@ -264,7 +274,8 @@ public enum DoctorReport {
         lines.append("state \(status): \(state.path)")
         if let count = state.fixtureCount { lines.append("fixtures \(count)") }
         if let runtime = state.runtime {
-            lines.append("runtime source \(runtime.sourceAddress), telink_source \(runtime.telinkSourceAddress), sequence_next \(runtime.sequenceNext)")
+            lines.append("runtime source \(runtime.sourceAddress), "
+                + "telink_source \(runtime.telinkSourceAddress), sequence_next \(runtime.sequenceNext)")
         }
         lines.append("runtime \(data.readiness.runtimeControlReady ? "ready" : "not_ready")")
         if !data.readiness.runtimeControlReady, !data.readiness.missing.isEmpty {

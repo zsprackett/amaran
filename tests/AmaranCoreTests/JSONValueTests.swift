@@ -4,10 +4,10 @@ import Testing
 
 struct JSONValueTests {
     @Test func accessorsReadNestedValues() throws {
-        let data = """
+        let data = Data("""
         {"ok": true, "data": {"daemon": {"pid": 42}, "central_state": "poweredOn",
          "connected": false}}
-        """.data(using: .utf8)!
+        """.utf8)
         let value = try JSONDecoder().decode(JSONValue.self, from: data)
 
         #expect(value["ok"]?.boolValue == true)

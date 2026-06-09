@@ -15,28 +15,28 @@ struct SceneControlTests {
     @Test func sceneFixtureFromStatus() throws {
         let status = try parsed(
             "{\"cct\":{\"intensity\":400,\"cct\":5600,\"gm\":4,\"sleep_mode\":1}}")
-        let sf = SceneControl.sceneFixture(parsed: status, fixture: fixture())
-        #expect(sf.nodeAddress == 3)
-        #expect(sf.name == "key")
-        #expect(sf.macSuffix == "DDEEFF")
-        #expect(sf.intensity == 40)       // 400/10
-        #expect(sf.cct == 5600)           // default range, no clamp
-        #expect(sf.gm == 4)               // gm-capable default fixture
-        #expect(sf.sleepMode == 1)
+        let captured = SceneControl.sceneFixture(parsed: status, fixture: fixture())
+        #expect(captured.nodeAddress == 3)
+        #expect(captured.name == "key")
+        #expect(captured.macSuffix == "DDEEFF")
+        #expect(captured.intensity == 40)       // 400/10
+        #expect(captured.cct == 5600)           // default range, no clamp
+        #expect(captured.greenMagenta == 4)     // gm-capable default fixture
+        #expect(captured.sleepMode == 1)
     }
 
     @Test func sceneFixtureDropsGmForUnsupportedFixture() throws {
         let status = try parsed("{\"cct\":{\"intensity\":500,\"cct\":4000,\"gm\":4,\"sleep_mode\":1}}")
-        let sf = SceneControl.sceneFixture(parsed: status, fixture: fixture(code: "400M5"))
-        #expect(sf.gm == nil)             // 400M5 has no gm
-        #expect(sf.cct == 4000)
+        let captured = SceneControl.sceneFixture(parsed: status, fixture: fixture(code: "400M5"))
+        #expect(captured.greenMagenta == nil)   // 400M5 has no gm
+        #expect(captured.cct == 4000)
     }
 
     @Test func forcedOffFixture() {
-        let sf = SceneControl.forcedOff(fixture())
-        #expect(sf.sleepMode == 0)
-        #expect(sf.intensity == nil)
-        #expect(sf.cct == nil)
+        let captured = SceneControl.forcedOff(fixture())
+        #expect(captured.sleepMode == 0)
+        #expect(captured.intensity == nil)
+        #expect(captured.cct == nil)
     }
 
     @Test func applySpecsForOff() {
@@ -46,14 +46,14 @@ struct SceneControlTests {
 
     @Test func applySpecsForCctIntensityGm() {
         let entry = SceneFixture(nodeAddress: 3, name: "k", macSuffix: "x",
-                                 intensity: 75, cct: 5600, gm: 6, sleepMode: 1)
+                                 intensity: 75, cct: 5600, greenMagenta: 6, sleepMode: 1)
         #expect(SceneControl.applySpecs(entry: entry, fixture: fixture())
             == ["on", "cct:5600:75:6:0"])
     }
 
     @Test func applySpecsDefaultsGmForUnsupported() {
         let entry = SceneFixture(nodeAddress: 3, name: "k", macSuffix: "x",
-                                 intensity: 50, cct: 4000, gm: 6, sleepMode: 1)
+                                 intensity: 50, cct: 4000, greenMagenta: 6, sleepMode: 1)
         // 400M5 unsupported -> gm forced to 10; cct clamps into 2700..6500
         #expect(SceneControl.applySpecs(entry: entry, fixture: fixture(code: "400M5"))
             == ["on", "cct:4000:50:10:0"])

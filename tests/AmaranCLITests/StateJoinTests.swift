@@ -4,8 +4,8 @@ import AmaranCore
 @testable import AmaranCLI
 
 struct StateJoinTests {
-    private func json(_ s: String) throws -> JSONValue {
-        try JSONDecoder().decode(JSONValue.self, from: s.data(using: .utf8)!)
+    private func json(_ jsonString: String) throws -> JSONValue {
+        try JSONDecoder().decode(JSONValue.self, from: Data(jsonString.utf8))
     }
 
     @Test func chooseSourceAddressPrefersThree() throws {
