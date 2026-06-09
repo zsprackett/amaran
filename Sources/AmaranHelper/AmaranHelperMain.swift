@@ -1,8 +1,10 @@
 import Foundation
 
-@main
-struct AmaranHelperMain {
-    static func main() {
+/// Entry point for the AmaranHelper executable. The logic lives in the
+/// `AmaranHelperKit` library so it can be unit tested; the executable target
+/// is a thin shim that calls `AmaranHelperMain.main()`.
+public enum AmaranHelperMain {
+    public static func main() {
         if CommandLine.arguments.contains("--daemon") {
             runDaemon()
             return

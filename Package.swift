@@ -35,14 +35,25 @@ let package = Package(
             ],
             path: "Sources/amaran"
         ),
-        .executableTarget(
-            name: "AmaranHelper",
+        // The daemon/probe logic lives in this library target so it can be
+        // `@testable import`ed. The native BLE/mesh code was written and
+        // shipped under the Swift 5 language mode (raw `swiftc`). Keep it there
+        // rather than refactor ~5k lines of working CoreBluetooth code for
+        // Swift 6 strict concurrency. AmaranCore stays on the default Swift 6
+        // mode. NOTE: the sources stay in Sources/AmaranHelper so the hardcoded
+        // file list in scripts/test-mesh keeps working.
+        .target(
+            name: "AmaranHelperKit",
             dependencies: ["AmaranCore"],
             path: "Sources/AmaranHelper",
-            // The native BLE/mesh code was written and shipped under the Swift 5
-            // language mode (raw `swiftc`). Keep it there rather than refactor
-            // ~5k lines of working CoreBluetooth code for Swift 6 strict
-            // concurrency. AmaranCore stays on the default Swift 6 mode.
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Thin executable shim. Keeps the product/binary name AmaranHelper so
+        // scripts/build-amaran-helper and the signed .app bundle are unaffected.
+        .executableTarget(
+            name: "AmaranHelper",
+            dependencies: ["AmaranHelperKit"],
+            path: "Sources/AmaranHelperExe",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
@@ -54,6 +65,11 @@ let package = Package(
             name: "AmaranCLITests",
             dependencies: ["AmaranCLI"],
             path: "tests/AmaranCLITests"
+        ),
+        .testTarget(
+            name: "AmaranHelperKitTests",
+            dependencies: ["AmaranHelperKit"],
+            path: "tests/AmaranHelperKitTests"
         )
     ]
 )
