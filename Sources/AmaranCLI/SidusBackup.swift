@@ -82,7 +82,10 @@ public enum SidusBackup {
     static func unencryptedMeshFiles(_ backupDir: URL) throws -> [SidusMeshFile] {
         let manifest = backupDir.appendingPathComponent("Manifest.db").path
         var db: OpaquePointer?
-        guard sqlite3_open_v2(manifest, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db else {
+        // Immutable: the backup Manifest.db may be WAL-mode; read-only without the
+        // -wal sidecar otherwise fails at first statement.
+        let uri = "file:\(manifest)?immutable=1"
+        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK, let db else {
             sqlite3_close(db)
             throw SourceError.notADatabase
         }

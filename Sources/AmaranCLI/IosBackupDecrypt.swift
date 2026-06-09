@@ -55,10 +55,15 @@ public enum IosBackupDecrypt {
             .appendingPathComponent("amaran-manifest-\(UUID().uuidString).db")
         try db.write(to: temp)
         defer { try? FileManager.default.removeItem(at: temp) }
+        // Open as immutable: the decrypted Manifest.db is often WAL-mode, and a
+        // plain read-only open fails at first statement without the -wal sidecar.
         var handle: OpaquePointer?
-        guard sqlite3_open_v2(temp.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let handle else {
+        let uri = "file:\(temp.path)?immutable=1"
+        let openStatus = sqlite3_open_v2(uri, &handle, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil)
+        guard openStatus == SQLITE_OK, let handle else {
+            let message = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "status \(openStatus)"
             sqlite3_close(handle)
-            throw CLIError("encrypted iPad backup Manifest.db could not be opened")
+            throw CLIError("encrypted iPad backup Manifest.db could not be opened: \(message)")
         }
         defer { sqlite3_close(handle) }
         return try body(handle)
@@ -74,7 +79,8 @@ public enum IosBackupDecrypt {
         """
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-            throw CLIError("encrypted iPad backup Manifest.db query failed")
+            let message = String(cString: sqlite3_errmsg(db))
+            throw CLIError("encrypted iPad backup Manifest.db query failed: \(message)")
         }
         defer { sqlite3_finalize(stmt) }
         let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

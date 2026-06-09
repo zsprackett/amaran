@@ -26,8 +26,9 @@ scope.
   there is zero Python in the project.
 - **`sidus-import`: fully native**, including encrypted backups
   (`IosBackupDecrypt`: keybag parse, PBKDF2 + RFC-3394 unwrap + AES-CBC). Crypto
-  primitives are RFC-vector tested; the end-to-end encrypted path needs
-  verification against a real encrypted backup.
+  primitives are RFC-vector tested, and the end-to-end encrypted path is
+  **verified against a real encrypted iPad backup** (the decrypted Manifest.db is
+  opened `immutable` to handle WAL-mode read-only).
 - **Output parity.** `--json` field names and structure stay stable (the TUI and
   any scripts parse it). Human-readable text may be cleaned up.
 - **Build.** SwiftPM + swift-argument-parser (first Swift package dependency in
@@ -194,8 +195,8 @@ pretty-printed, sorted keys, trailing newline.
 
 ## Known follow-ups
 - Hardware-verify the provisioning flow (`pair`/`provision-test`/`configure-test`/
-  `join-capture`/`config-node-reset-test`), the live `discover` batch probe, and
-  the end-to-end encrypted-backup decrypt (crypto primitives are RFC-tested).
+  `join-capture`/`config-node-reset-test`) and the live `discover` batch probe.
+- (Done) End-to-end encrypted-backup decrypt verified against a real backup.
 - `pair-test` (a zsh diagnostic alias of `pair`) was not carried over.
 - A fuller AGENTS.md/HANDOFF.md rewrite, and an optional CLI integration smoke
   test to replace `test-cli-wrapper`.
