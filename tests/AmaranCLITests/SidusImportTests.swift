@@ -23,22 +23,22 @@ struct SidusImportTests {
     }
 
     @Test func parsesCandidateFromMesh() {
-        let c = SidusImport.candidate(from: file(meshJSON), now: "t")!
-        #expect(c.meshName == "Studio")
-        #expect(c.meshUUID == "uuid-1")
-        #expect(c.netKey == "00112233445566778899aabbccddeeff")
-        #expect(c.fixtures.count == 2)                  // provisioner (addr 1) skipped
-        #expect(c.fixtures[0].nodeAddress == 3)
-        #expect(c.fixtures[0].code == "400D")
-        #expect(c.fixtures[0].macAddress == "AA:BB:CC:DD:EE:FF")
-        #expect(c.fixtures[0].deviceKey == "00112233445566778899aabbccddeeff")
-        #expect(c.fixtures[0].controlOnly == false)
-        #expect(c.fixtures[0].elementCount == 2)
-        #expect(c.fixtures[1].nodeAddress == 5)
-        #expect(c.fixtures[1].code == "")
-        #expect(c.fixtures[1].controlOnly == true)
-        #expect(c.score.fixtureCount == 2)
-        #expect(c.score.deviceKeyCount == 1)
+        let candidate = SidusImport.candidate(from: file(meshJSON), now: "t")!
+        #expect(candidate.meshName == "Studio")
+        #expect(candidate.meshUUID == "uuid-1")
+        #expect(candidate.netKey == "00112233445566778899aabbccddeeff")
+        #expect(candidate.fixtures.count == 2)                  // provisioner (addr 1) skipped
+        #expect(candidate.fixtures[0].nodeAddress == 3)
+        #expect(candidate.fixtures[0].code == "400D")
+        #expect(candidate.fixtures[0].macAddress == "AA:BB:CC:DD:EE:FF")
+        #expect(candidate.fixtures[0].deviceKey == "00112233445566778899aabbccddeeff")
+        #expect(candidate.fixtures[0].controlOnly == false)
+        #expect(candidate.fixtures[0].elementCount == 2)
+        #expect(candidate.fixtures[1].nodeAddress == 5)
+        #expect(candidate.fixtures[1].code == "")
+        #expect(candidate.fixtures[1].controlOnly == true)
+        #expect(candidate.score.fixtureCount == 2)
+        #expect(candidate.score.deviceKeyCount == 1)
     }
 
     @Test func candidateRejectsMissingKeys() {
@@ -47,24 +47,24 @@ struct SidusImportTests {
     }
 
     @Test func selectByScoreAndSelector() throws {
-        let c = SidusImport.candidate(from: file(meshJSON), now: "t")!
-        #expect(try SidusImport.select([c], selector: "").meshName == "Studio")
-        #expect(try SidusImport.select([c], selector: "studio").meshName == "Studio")
-        #expect(throws: CLIError.self) { _ = try SidusImport.select([c], selector: "nope") }
+        let candidate = SidusImport.candidate(from: file(meshJSON), now: "t")!
+        #expect(try SidusImport.select([candidate], selector: "").meshName == "Studio")
+        #expect(try SidusImport.select([candidate], selector: "studio").meshName == "Studio")
+        #expect(throws: CLIError.self) { _ = try SidusImport.select([candidate], selector: "nope") }
         #expect(throws: CLIError.self) { _ = try SidusImport.select([], selector: "") }
     }
 
     @Test func choosesSourceAddressesAroundOccupied() {
-        let c = SidusImport.candidate(from: file(meshJSON), now: "t")!
+        let candidate = SidusImport.candidate(from: file(meshJSON), now: "t")!
         // addr 3 has 2 elements (3,4), addr 5 -> occupied {3,4,5}
-        let (source, telink) = SidusImport.chooseSourceAddresses(c.fixtures)
+        let (source, telink) = SidusImport.chooseSourceAddresses(candidate.fixtures)
         #expect(source == 6)
         #expect(telink == 1)
     }
 
     @Test func buildsStateWithSidusSource() {
-        let c = SidusImport.candidate(from: file(meshJSON), now: "t")!
-        let state = SidusImport.buildState(c, now: "t")
+        let candidate = SidusImport.candidate(from: file(meshJSON), now: "t")!
+        let state = SidusImport.buildState(candidate, now: "t")
         #expect(state.source.type == "sidus_ios_backup_import")
         #expect(state.source.extra["mesh_name"] == .string("Studio"))
         #expect(state.runtime.sourceAddress == 6)

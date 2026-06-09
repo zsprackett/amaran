@@ -20,10 +20,10 @@ public enum ControlSpecError: Error, Equatable, CustomStringConvertible {
 /// packet. Telink raw-packet checksum validation likewise stays in the app's
 /// Telink layer; this type owns the spec string grammar.
 public enum ControlSpec: Equatable {
-    case on
-    case off
+    case turnOn
+    case turnOff
     case intensity(percent: String)
-    case cct(kelvin: String, intensity: String, gm: Int, gmFlag: Int)
+    case cct(kelvin: String, intensity: String, greenMagenta: Int, gmFlag: Int)
     case raw(hex: String)
     case status
 
@@ -36,10 +36,10 @@ public enum ControlSpec: Equatable {
         switch name {
         case "on":
             try requirePartCount(parts, 1, spec)
-            return .on
+            return .turnOn
         case "off":
             try requirePartCount(parts, 1, spec)
-            return .off
+            return .turnOff
         case "status":
             try requirePartCount(parts, 1, spec)
             return .status
@@ -47,10 +47,10 @@ public enum ControlSpec: Equatable {
             try requirePartCount(parts, 2, spec)
             return .intensity(percent: parts[1])
         case "cct":
-            guard parts.count == 5, let gm = Int(parts[3]), let gmFlag = Int(parts[4]) else {
+            guard parts.count == 5, let greenMagenta = Int(parts[3]), let gmFlag = Int(parts[4]) else {
                 throw ControlSpecError.invalid(spec)
             }
-            return .cct(kelvin: parts[1], intensity: parts[2], gm: gm, gmFlag: gmFlag)
+            return .cct(kelvin: parts[1], intensity: parts[2], greenMagenta: greenMagenta, gmFlag: gmFlag)
         case "raw":
             try requirePartCount(parts, 2, spec)
             return .raw(hex: parts[1])
@@ -62,12 +62,12 @@ public enum ControlSpec: Equatable {
     /// The canonical spec string. `parse(spec).serialized == spec` for canonical input.
     public var serialized: String {
         switch self {
-        case .on: return "on"
-        case .off: return "off"
+        case .turnOn: return "on"
+        case .turnOff: return "off"
         case .status: return "status"
         case .intensity(let percent): return "intensity:\(percent)"
-        case .cct(let kelvin, let intensity, let gm, let gmFlag):
-            return "cct:\(kelvin):\(intensity):\(gm):\(gmFlag)"
+        case .cct(let kelvin, let intensity, let greenMagenta, let gmFlag):
+            return "cct:\(kelvin):\(intensity):\(greenMagenta):\(gmFlag)"
         case .raw(let hex): return "raw:\(hex)"
         }
     }

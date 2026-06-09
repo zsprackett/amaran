@@ -24,13 +24,13 @@ public struct IdentifyCommand: ParsableCommand {
                                    node: selector, timeout: opts.timeout)
 
         let statusResponse = try runner.status()
-        guard statusResponse.ok, let data = statusResponse.data else {
+        guard statusResponse.succeeded, let data = statusResponse.data else {
             throw CLIError(ControlResult.failureDetail(statusResponse, kind: "status"))
         }
         let plan = IdentifyPlan.plan(parsed: try StatusReport.statusObject(data))
 
         let response = try runner.controlSequence(specs: plan.sequence())
-        guard response.ok else {
+        guard response.succeeded else {
             throw CLIError(ControlResult.failureDetail(response, kind: "control"))
         }
 
@@ -40,7 +40,7 @@ public struct IdentifyCommand: ParsableCommand {
                 "identified": .bool(true),
                 "address": address,
                 "flashes": .int(3),
-                "restored": .string(plan.originalState),
+                "restored": .string(plan.originalState)
             ])))
         } else {
             print("identified address \(plan.address.map(String.init) ?? "unknown") with 3 flashes")

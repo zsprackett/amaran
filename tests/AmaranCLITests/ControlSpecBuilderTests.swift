@@ -7,11 +7,20 @@ struct ControlSpecBuilderTests {
     private func fixture(code: String = "", name: String = "n") -> Fixture {
         Fixture(uuid: "f", code: code, name: name, nodeAddress: 3, updateTime: "t")
     }
-    private let m5 = "400M5"
+    private let m5Code = "400M5"
 
-    private func current(intensityTenths: Double? = nil, cct: Int? = nil, gm: Int? = nil, gmFlag: Int? = nil)
-        -> StatusReport.CurrentValues {
-        StatusReport.CurrentValues(intensityTenths: intensityTenths, cctKelvin: cct, gm: gm, gmFlag: gmFlag)
+    private func current(
+        intensityTenths: Double? = nil,
+        cct: Int? = nil,
+        gm greenMagenta: Int? = nil,
+        gmFlag: Int? = nil
+    ) -> StatusReport.CurrentValues {
+        StatusReport.CurrentValues(
+            intensityTenths: intensityTenths,
+            cctKelvin: cct,
+            greenMagenta: greenMagenta,
+            gmFlag: gmFlag
+        )
     }
 
     // MARK: cct
@@ -28,7 +37,7 @@ struct ControlSpecBuilderTests {
         // 400M5 range is 2700..6500
         let result = try ControlSpecBuilder.cctSpec(
             requestedKelvin: 8000, intensityPercent: 50, gm: nil,
-            fixture: fixture(code: m5), current: nil)
+            fixture: fixture(code: m5Code), current: nil)
         #expect(result.spec.hasPrefix("cct:6500:50:"))
         #expect(result.clampWarning?.contains("8000K clamped to 6500K") == true)
     }
@@ -52,7 +61,7 @@ struct ControlSpecBuilderTests {
         // 400M5 does not support gm; no status needed for gm
         let result = try ControlSpecBuilder.cctSpec(
             requestedKelvin: 4000, intensityPercent: 50, gm: nil,
-            fixture: fixture(code: m5), current: nil)
+            fixture: fixture(code: m5Code), current: nil)
         #expect(result.spec == "cct:4000:50:10:0")
     }
 
@@ -60,7 +69,7 @@ struct ControlSpecBuilderTests {
         #expect(throws: CLIError.self) {
             _ = try ControlSpecBuilder.cctSpec(
                 requestedKelvin: 4000, intensityPercent: 50, gm: 5,
-                fixture: fixture(code: m5), current: nil)
+                fixture: fixture(code: m5Code), current: nil)
         }
     }
 
@@ -83,7 +92,7 @@ struct ControlSpecBuilderTests {
     @Test func gmSpecRejectsUnsupportedFixture() {
         #expect(throws: CLIError.self) {
             _ = try ControlSpecBuilder.gmSpec(
-                gm: 6, fixture: fixture(code: m5), current: current(intensityTenths: 400, cct: 5600))
+                gm: 6, fixture: fixture(code: m5Code), current: current(intensityTenths: 400, cct: 5600))
         }
     }
 

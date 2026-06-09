@@ -60,12 +60,18 @@ public struct DaemonRequest: Codable, Equatable, Sendable {
 /// A response from the runtime daemon. `data` is free-form (`JSONValue`) since
 /// its shape varies by action.
 public struct DaemonResponse: Codable, Equatable, Sendable {
-    public var ok: Bool
+    public var succeeded: Bool
     public var error: String?
     public var data: JSONValue?
 
-    public init(ok: Bool, error: String? = nil, data: JSONValue? = nil) {
-        self.ok = ok
+    enum CodingKeys: String, CodingKey {
+        case succeeded = "ok"
+        case error
+        case data
+    }
+
+    public init(succeeded: Bool, error: String? = nil, data: JSONValue? = nil) {
+        self.succeeded = succeeded
         self.error = error
         self.data = data
     }

@@ -4,8 +4,8 @@ import AmaranCore
 @testable import AmaranCLI
 
 struct StatusReportTests {
-    private func data(_ s: String) throws -> JSONValue {
-        try JSONDecoder().decode(JSONValue.self, from: s.data(using: .utf8)!)
+    private func data(_ jsonString: String) throws -> JSONValue {
+        try JSONDecoder().decode(JSONValue.self, from: Data(jsonString.utf8))
     }
 
     private let sample = """
@@ -38,7 +38,7 @@ struct StatusReportTests {
         let values = StatusReport.currentValues(parsed: parsed)
         #expect(values.intensityTenths == 400)
         #expect(values.cctKelvin == 5600)
-        #expect(values.gm == 4)
+        #expect(values.greenMagenta == 4)
         #expect(values.gmFlag == 0)
     }
 

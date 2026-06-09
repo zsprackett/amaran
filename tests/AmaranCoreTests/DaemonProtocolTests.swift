@@ -41,9 +41,9 @@ struct DaemonProtocolTests {
     }
 
     @Test func decodesSuccessResponse() throws {
-        let line = "{\"ok\":true,\"data\":{\"central_state\":\"poweredOn\"}}\n".data(using: .utf8)!
+        let line = Data("{\"ok\":true,\"data\":{\"central_state\":\"poweredOn\"}}\n".utf8)
         let response = try DaemonProtocol.decodeResponse(line)
-        #expect(response.ok == true)
+        #expect(response.succeeded == true)
         #expect(response.error == nil)
         if case .object(let data)? = response.data, case .string(let state)? = data["central_state"] {
             #expect(state == "poweredOn")
@@ -53,9 +53,9 @@ struct DaemonProtocolTests {
     }
 
     @Test func decodesErrorResponse() throws {
-        let line = "{\"ok\":false,\"error\":\"Bluetooth is poweredOff\"}".data(using: .utf8)!
+        let line = Data("{\"ok\":false,\"error\":\"Bluetooth is poweredOff\"}".utf8)
         let response = try DaemonProtocol.decodeResponse(line)
-        #expect(response.ok == false)
+        #expect(response.succeeded == false)
         #expect(response.error == "Bluetooth is poweredOff")
     }
 }

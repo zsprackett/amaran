@@ -64,8 +64,8 @@ public enum SceneReport {
             if let cct = entry.cct {
                 parts.append("\(Capabilities.clampCct(cct, for: capsFixture))K")
             }
-            if let gm = entry.gm, Capabilities.gmSupported(capsFixture) {
-                parts.append("gm \(gm)")
+            if let greenMagenta = entry.greenMagenta, Capabilities.gmSupported(capsFixture) {
+                parts.append("gm \(greenMagenta)")
             }
             lines.append(parts.joined(separator: "\t"))
         }

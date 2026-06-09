@@ -30,17 +30,17 @@ public enum IosBackupDecrypt {
             throw CLIError("encrypted iPad backup could not be read: wrong password?")
         }
 
-        return try withDecryptedManifest(manifestDB) { db in
-            try meshRows(db: db, domains: domains).compactMap { row in
-                guard let (clas, wrapped, size) = parseMBFile(row.fileBlob),
-                    let classKey = classKeys[clas],
-                    let fileKey = BackupCrypto.aesUnwrap(kek: classKey, wrapped: wrapped) else {
+        return try withDecryptedManifest(manifestDB) { database in
+            try meshRows(db: database, domains: domains).compactMap { row in
+                guard let entry = parseMBFile(row.fileBlob),
+                    let classKey = classKeys[entry.clas],
+                    let fileKey = BackupCrypto.aesUnwrap(kek: classKey, wrapped: entry.wrapped) else {
                     return nil
                 }
                 let fileURL = backupDir.appendingPathComponent(String(row.fileID.prefix(2)))
                     .appendingPathComponent(row.fileID)
                 guard let encrypted = try? Data(contentsOf: fileURL) else { return nil }
-                let decrypted = BackupCrypto.aesCBCDecrypt(key: fileKey, data: encrypted).prefix(size)
+                let decrypted = BackupCrypto.aesCBCDecrypt(key: fileKey, data: encrypted).prefix(entry.size)
                 return SidusMeshFile(domain: row.domain, relativePath: row.relativePath, data: Data(decrypted))
             }
         }
@@ -50,10 +50,13 @@ public enum IosBackupDecrypt {
 
     private struct MeshRow { let fileID: String; let domain: String; let relativePath: String; let fileBlob: Data }
 
-    private static func withDecryptedManifest<T>(_ db: Data, _ body: (OpaquePointer) throws -> T) throws -> T {
+    /// Decoded EncryptionKey fields from a Manifest Files.file blob.
+    struct MBFileKey { let clas: Int; let wrapped: Data; let size: Int }
+
+    private static func withDecryptedManifest<T>(_ database: Data, _ body: (OpaquePointer) throws -> T) throws -> T {
         let temp = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("amaran-manifest-\(UUID().uuidString).db")
-        try db.write(to: temp)
+        try database.write(to: temp)
         defer { try? FileManager.default.removeItem(at: temp) }
         // Open as immutable: the decrypted Manifest.db is often WAL-mode, and a
         // plain read-only open fails at first statement without the -wal sidecar.
@@ -69,7 +72,7 @@ public enum IosBackupDecrypt {
         return try body(handle)
     }
 
-    private static func meshRows(db: OpaquePointer, domains: [String]) throws -> [MeshRow] {
+    private static func meshRows(db database: OpaquePointer, domains: [String]) throws -> [MeshRow] {
         let placeholders = domains.map { _ in "?" }.joined(separator: ", ")
         let sql = """
         select fileID, domain, relativePath, file from Files
@@ -78,8 +81,8 @@ public enum IosBackupDecrypt {
         order by domain, relativePath
         """
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-            let message = String(cString: sqlite3_errmsg(db))
+        guard sqlite3_prepare_v2(database, sql, -1, &stmt, nil) == SQLITE_OK else {
+            let message = String(cString: sqlite3_errmsg(database))
             throw CLIError("encrypted iPad backup Manifest.db query failed: \(message)")
         }
         defer { sqlite3_finalize(stmt) }
@@ -90,12 +93,13 @@ public enum IosBackupDecrypt {
 
         var rows: [MeshRow] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let idc = sqlite3_column_text(stmt, 0), let dc = sqlite3_column_text(stmt, 1),
-                let rc = sqlite3_column_text(stmt, 2), let blob = sqlite3_column_blob(stmt, 3) else { continue }
+            guard let idc = sqlite3_column_text(stmt, 0), let domainCol = sqlite3_column_text(stmt, 1),
+                let relativePathCol = sqlite3_column_text(stmt, 2),
+                let blob = sqlite3_column_blob(stmt, 3) else { continue }
             let blobLen = Int(sqlite3_column_bytes(stmt, 3))
             rows.append(MeshRow(
-                fileID: String(cString: idc), domain: String(cString: dc),
-                relativePath: String(cString: rc),
+                fileID: String(cString: idc), domain: String(cString: domainCol),
+                relativePath: String(cString: relativePathCol),
                 fileBlob: Data(bytes: blob, count: blobLen)))
         }
         return rows
@@ -106,7 +110,7 @@ public enum IosBackupDecrypt {
     /// Extracts (class, wrapped-key, size) from a Manifest Files.file blob.
     /// Heuristic: the EncryptionKey is the 44-byte (`<class:4><wrapped:40>`) data
     /// object; Size is the MBFile's inline integer.
-    static func parseMBFile(_ blob: Data) -> (clas: Int, wrapped: Data, size: Int)? {
+    static func parseMBFile(_ blob: Data) -> MBFileKey? {
         guard let plist = try? PropertyListSerialization.propertyList(from: blob, format: nil),
             let root = plist as? [String: Any],
             let objects = root["$objects"] as? [Any] else { return nil }
@@ -115,8 +119,8 @@ public enum IosBackupDecrypt {
         var size: Int?
         for object in objects {
             if let dict = object as? [String: Any] {
-                if dict["EncryptionKey"] != nil, let s = (dict["Size"] as? NSNumber)?.intValue {
-                    size = s
+                if dict["EncryptionKey"] != nil, let sizeValue = (dict["Size"] as? NSNumber)?.intValue {
+                    size = sizeValue
                 }
                 if let nsdata = dict["NS.data"] as? Data, nsdata.count == 44 {
                     encKeyBlob = nsdata
@@ -127,7 +131,7 @@ public enum IosBackupDecrypt {
         }
         guard let encKeyBlob, let size else { return nil }
         let clas = Int(littleEndianUInt32(encKeyBlob.prefix(4)))
-        return (clas, Data(encKeyBlob.dropFirst(4)), size)
+        return MBFileKey(clas: clas, wrapped: Data(encKeyBlob.dropFirst(4)), size: size)
     }
 
     private static func unwrapFileKey(_ blob: Data, classKeys: [Int: Data]) -> Data? {
@@ -180,25 +184,31 @@ struct KeyBag {
             guard valueStart + length <= data.endIndex else { break }
             let value = data[valueStart..<valueStart + length]
             offset = valueStart + length
-
-            switch tag {
-            case "SALT": bag.salt = Data(value)
-            case "ITER": bag.iterations = IosBackupDecrypt.bigEndianInt(value)
-            case "DPSL": bag.doubleSalt = Data(value)
-            case "DPIC": bag.doubleIterations = IosBackupDecrypt.bigEndianInt(value)
-            case "UUID":
-                if !sawHeaderUUID { sawHeaderUUID = true } else { currentClass = nil }
-            case "CLAS": currentClass = IosBackupDecrypt.bigEndianInt(value)
-            case "WPKY":
-                if let clas = currentClass { bag.classes[clas] = Data(value) }
-            default:
-                break
-            }
+            bag.applyTLV(tag: tag, value: value, sawHeaderUUID: &sawHeaderUUID, currentClass: &currentClass)
         }
         guard !bag.salt.isEmpty, bag.iterations > 0, !bag.classes.isEmpty else {
             throw CLIError("encrypted iPad backup keybag is malformed")
         }
         return bag
+    }
+
+    /// Applies one keybag TLV record, mutating the bag and the running parse cursor.
+    private mutating func applyTLV(
+        tag: String, value: Data.SubSequence, sawHeaderUUID: inout Bool, currentClass: inout Int?
+    ) {
+        switch tag {
+        case "SALT": salt = Data(value)
+        case "ITER": iterations = IosBackupDecrypt.bigEndianInt(value)
+        case "DPSL": doubleSalt = Data(value)
+        case "DPIC": doubleIterations = IosBackupDecrypt.bigEndianInt(value)
+        case "UUID":
+            if !sawHeaderUUID { sawHeaderUUID = true } else { currentClass = nil }
+        case "CLAS": currentClass = IosBackupDecrypt.bigEndianInt(value)
+        case "WPKY":
+            if let clas = currentClass { classes[clas] = Data(value) }
+        default:
+            break
+        }
     }
 
     /// Derives the passcode key and unwraps each class key.
@@ -271,11 +281,11 @@ enum BackupCrypto {
         let capacity = data.count + kCCBlockSizeAES128
         var out = Data(count: capacity)
         var moved = 0
-        let iv = Data(count: kCCBlockSizeAES128)
+        let ivData = Data(count: kCCBlockSizeAES128)
         let status = out.withUnsafeMutableBytes { outPtr in
             data.withUnsafeBytes { dataPtr in
                 key.withUnsafeBytes { keyPtr in
-                    iv.withUnsafeBytes { ivPtr in
+                    ivData.withUnsafeBytes { ivPtr in
                         CCCrypt(
                             CCOperation(kCCDecrypt), CCAlgorithm(kCCAlgorithmAES), 0,
                             keyPtr.baseAddress, key.count,

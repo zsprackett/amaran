@@ -43,7 +43,7 @@ public enum StatusReport {
         return .object([
             "address": data["native_send"]?["address"] ?? .null,
             "menu": menu,
-            "cct": .object(cctOut),
+            "cct": .object(cctOut)
         ])
     }
 
@@ -61,8 +61,8 @@ public enum StatusReport {
         if let kelvin = cct["cct_kelvin"]?.intValue {
             parts.append("cct \(kelvin)K")
         }
-        if let gm = cct["gm_decoded"]?.intValue {
-            parts.append("gm \(gm)")
+        if let greenMagenta = cct["gm_decoded"]?.intValue {
+            parts.append("gm \(greenMagenta)")
         }
         if let sleep = cct["sleep_mode"]?.intValue {
             parts.append("sleep_mode \(sleep)")
@@ -76,7 +76,7 @@ public enum StatusReport {
     public struct CurrentValues {
         public let intensityTenths: Double?  // cct.intensity (0-1000)
         public let cctKelvin: Int?           // cct.cct
-        public let gm: Int?                  // cct.gm
+        public let greenMagenta: Int?        // cct.gm
         public let gmFlag: Int?              // cct.gm_flag
     }
 
@@ -85,7 +85,7 @@ public enum StatusReport {
         return CurrentValues(
             intensityTenths: cct["intensity"]?.doubleValue,
             cctKelvin: cct["cct"]?.intValue,
-            gm: cct["gm"]?.intValue,
+            greenMagenta: cct["gm"]?.intValue,
             gmFlag: cct["gm_flag"]?.intValue)
     }
 

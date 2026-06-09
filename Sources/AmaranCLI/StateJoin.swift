@@ -67,45 +67,8 @@ public enum StateJoin {
             runtimeIn["sequence_next"] ?? source["sequence_next"] ?? .int(1),
             0, 0x00FF_FFFE, "runtime sequence_next")
 
-        var fixtures: [Fixture] = []
         var occupied = Set<Int>()
-        for (offset, item) in fixturesIn.enumerated() {
-            let index = offset + 1
-            guard let fixture = item.objectValue else {
-                throw CLIError("join state fixture #\(index) must be a JSON object")
-            }
-            let address = try intInRange(
-                fixture["node_address"] ?? fixture["address"], 1, 0x7FFF,
-                "fixture #\(index) node_address")
-            let elementCount = try elementCountFor(fixture, index: index)
-            for delta in 0..<elementCount {
-                let elementAddress = address + delta
-                guard elementAddress <= 0x7FFF else {
-                    throw CLIError("join state fixture #\(index) element address exceeds unicast range")
-                }
-                guard !occupied.contains(elementAddress) else {
-                    throw CLIError("join state has duplicate fixture element address \(elementAddress)")
-                }
-                occupied.insert(elementAddress)
-            }
-            let mac = try normalizeMac(fixture["mac_address"] ?? fixture["mac"])
-            let deviceKey = try optionalHexValue(fixture["device_key"], bytes: 16, label: "fixture #\(index) device_key")
-            let deviceUUID = try optionalHexValue(fixture["device_uuid"], bytes: 16, label: "fixture #\(index) device_uuid")
-            let uuid = nonEmptyString(fixture["uuid"]) ?? deviceUUID ?? "joined-\(address)"
-            fixtures.append(Fixture(
-                uuid: uuid,
-                macAddress: mac,
-                code: nonEmptyString(fixture["code"]) ?? "",
-                name: nonEmptyString(fixture["name"]) ?? nonEmptyString(fixture["label"]) ?? "",
-                nodeAddress: address,
-                deviceKey: deviceKey,
-                deviceUUID: deviceUUID,
-                compositionData: try optionalHexBlob(fixture["composition_data"], label: "fixture #\(index) composition_data"),
-                elementCount: elementCount,
-                updateTime: now,
-                state: 0,
-                controlOnly: deviceKey == nil))
-        }
+        let fixtures = try buildFixtures(fixturesIn, now: now, occupied: &occupied)
 
         let sourceAddress = try chooseRuntimeSourceAddress(runtimeIn, source, occupied: occupied)
         var occupiedWithSource = occupied
@@ -126,6 +89,67 @@ public enum StateJoin {
                 ivIndex: ivIndex, sourceAddress: sourceAddress,
                 telinkSourceAddress: telinkSourceAddress, sequenceNext: sequenceNext,
                 updatedAt: now, lastReservedBy: "state-join"))
+    }
+
+    private static func buildFixtures(
+        _ fixturesIn: [JSONValue], now: String, occupied: inout Set<Int>
+    ) throws -> [Fixture] {
+        var fixtures: [Fixture] = []
+        for (offset, item) in fixturesIn.enumerated() {
+            let index = offset + 1
+            guard let fixture = item.objectValue else {
+                throw CLIError("join state fixture #\(index) must be a JSON object")
+            }
+            let address = try intInRange(
+                fixture["node_address"] ?? fixture["address"], 1, 0x7FFF,
+                "fixture #\(index) node_address")
+            let elementCount = try elementCountFor(fixture, index: index)
+            try reserveElementAddresses(
+                address: address, elementCount: elementCount, index: index, occupied: &occupied)
+            fixtures.append(try makeFixture(fixture, address: address, elementCount: elementCount,
+                                            index: index, now: now))
+        }
+        return fixtures
+    }
+
+    private static func reserveElementAddresses(
+        address: Int, elementCount: Int, index: Int, occupied: inout Set<Int>
+    ) throws {
+        for delta in 0..<elementCount {
+            let elementAddress = address + delta
+            guard elementAddress <= 0x7FFF else {
+                throw CLIError("join state fixture #\(index) element address exceeds unicast range")
+            }
+            guard !occupied.contains(elementAddress) else {
+                throw CLIError("join state has duplicate fixture element address \(elementAddress)")
+            }
+            occupied.insert(elementAddress)
+        }
+    }
+
+    private static func makeFixture(
+        _ fixture: [String: JSONValue], address: Int, elementCount: Int, index: Int, now: String
+    ) throws -> Fixture {
+        let mac = try normalizeMac(fixture["mac_address"] ?? fixture["mac"])
+        let deviceKey = try optionalHexValue(
+            fixture["device_key"], bytes: 16, label: "fixture #\(index) device_key")
+        let deviceUUID = try optionalHexValue(
+            fixture["device_uuid"], bytes: 16, label: "fixture #\(index) device_uuid")
+        let uuid = nonEmptyString(fixture["uuid"]) ?? deviceUUID ?? "joined-\(address)"
+        return Fixture(
+            uuid: uuid,
+            macAddress: mac,
+            code: nonEmptyString(fixture["code"]) ?? "",
+            name: nonEmptyString(fixture["name"]) ?? nonEmptyString(fixture["label"]) ?? "",
+            nodeAddress: address,
+            deviceKey: deviceKey,
+            deviceUUID: deviceUUID,
+            compositionData: try optionalHexBlob(
+                fixture["composition_data"], label: "fixture #\(index) composition_data"),
+            elementCount: elementCount,
+            updateTime: now,
+            state: 0,
+            controlOnly: deviceKey == nil)
     }
 
     public static func result(state: State, sourcePath: String, targetPath: String) -> JoinResult {
@@ -155,7 +179,8 @@ public enum StateJoin {
             lines.append("\(fixture.name)\t\(fixture.address)\t...\(suffix)\t\(mode)")
         }
         if result.controlOnly {
-            lines.append("warning: DeviceKeys are missing for at least one fixture; Config diagnostics and node reset are unavailable for those fixtures")
+            lines.append("warning: DeviceKeys are missing for at least one fixture; "
+                + "Config diagnostics and node reset are unavailable for those fixtures")
         }
         return lines
     }
@@ -212,14 +237,14 @@ public enum StateJoin {
     private static func isEmpty(_ value: JSONValue?) -> Bool {
         switch value {
         case .none, .some(.null): return true
-        case .some(.string(let s)): return s.isEmpty
+        case .some(.string(let text)): return text.isEmpty
         default: return false
         }
     }
 
     private static func nonEmptyString(_ value: JSONValue?) -> String? {
-        guard let s = value?.stringValue, !s.isEmpty else { return nil }
-        return s
+        guard let string = value?.stringValue, !string.isEmpty else { return nil }
+        return string
     }
 
     private static func isHexBytes(_ value: String, bytes: Int? = nil) -> Bool {
@@ -229,10 +254,10 @@ public enum StateJoin {
     }
 
     private static func hexValue(_ value: JSONValue?, bytes: Int, label: String) throws -> String {
-        guard let s = value?.stringValue, isHexBytes(s.trimmingCharacters(in: .whitespaces), bytes: bytes) else {
+        guard let hex = value?.stringValue, isHexBytes(hex.trimmingCharacters(in: .whitespaces), bytes: bytes) else {
             throw CLIError("join state has invalid \(label)")
         }
-        return s.trimmingCharacters(in: .whitespaces).lowercased()
+        return hex.trimmingCharacters(in: .whitespaces).lowercased()
     }
 
     private static func optionalHexValue(_ value: JSONValue?, bytes: Int, label: String) throws -> String? {
@@ -242,10 +267,10 @@ public enum StateJoin {
 
     private static func optionalHexBlob(_ value: JSONValue?, label: String) throws -> String {
         if isEmpty(value) { return "" }
-        guard let s = value?.stringValue, isHexBytes(s.trimmingCharacters(in: .whitespaces)) else {
+        guard let hex = value?.stringValue, isHexBytes(hex.trimmingCharacters(in: .whitespaces)) else {
             throw CLIError("join state has invalid \(label)")
         }
-        return s.trimmingCharacters(in: .whitespaces).lowercased()
+        return hex.trimmingCharacters(in: .whitespaces).lowercased()
     }
 
     private static func normalizeMac(_ value: JSONValue?) throws -> String {
@@ -254,33 +279,33 @@ public enum StateJoin {
         if hex.isEmpty { return "" }
         guard hex.count == 12 else { throw CLIError("join state has invalid fixture mac_address") }
         var parts: [String] = []
-        var i = hex.startIndex
-        while i < hex.endIndex {
-            let next = hex.index(i, offsetBy: 2)
-            parts.append(String(hex[i..<next]))
-            i = next
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            parts.append(String(hex[index..<next]))
+            index = next
         }
         return parts.joined(separator: ":")
     }
 
-    private static func intInRange(_ value: JSONValue?, _ lo: Int, _ hi: Int, _ label: String) throws -> Int {
+    private static func intInRange(_ value: JSONValue?, _ low: Int, _ high: Int, _ label: String) throws -> Int {
         let parsed: Int?
         switch value {
-        case .int(let i): parsed = i
-        case .double(let d): parsed = Int(d)
-        case .string(let s): parsed = parseIntBase0(s)
+        case .int(let intValue): parsed = intValue
+        case .double(let doubleValue): parsed = Int(doubleValue)
+        case .string(let text): parsed = parseIntBase0(text)
         default: parsed = nil
         }
         guard let result = parsed else { throw CLIError("join state has invalid \(label)") }
-        guard lo <= result, result <= hi else { throw CLIError("join state has out-of-range \(label)") }
+        guard low <= result, result <= high else { throw CLIError("join state has out-of-range \(label)") }
         return result
     }
 
     private static func parseIntBase0(_ raw: String) -> Int? {
-        let s = raw.trimmingCharacters(in: .whitespaces).lowercased()
-        for (prefix, radix) in [("0x", 16), ("0o", 8), ("0b", 2)] {
-            if s.hasPrefix(prefix) { return Int(s.dropFirst(2), radix: radix) }
+        let trimmed = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        for (prefix, radix) in [("0x", 16), ("0o", 8), ("0b", 2)] where trimmed.hasPrefix(prefix) {
+            return Int(trimmed.dropFirst(2), radix: radix)
         }
-        return Int(s)
+        return Int(trimmed)
     }
 }

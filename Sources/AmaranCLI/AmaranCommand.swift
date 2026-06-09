@@ -18,7 +18,7 @@ public struct AmaranCommand: ParsableCommand {
             ConfigAppKeyAddTestCommand.self, ConfigModelAppBindTestCommand.self,
             PairCommand.self, ProvisionTestCommand.self, ConfigureTestCommand.self,
             ConfigNodeResetTestCommand.self, JoinCaptureCommand.self,
-            DiscoverCommand.self,
+            DiscoverCommand.self
         ]
     )
 

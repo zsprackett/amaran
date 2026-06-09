@@ -2,6 +2,24 @@ import ArgumentParser
 import Foundation
 import AmaranCore
 
+/// One fixture entry in a `scene apply` result.
+struct SceneApplyFixture: Codable {
+    let address: Int
+    let name: String
+    let succeeded: Bool
+    enum CodingKeys: String, CodingKey {
+        case address, name
+        case succeeded = "ok"
+    }
+}
+
+/// Result of `scene apply`.
+struct SceneApplyResult: Codable {
+    let name: String
+    let applied: Int
+    let fixtures: [SceneApplyFixture]
+}
+
 /// `amaran scene ...` — saved lighting looks.
 public struct SceneCommand: ParsableCommand {
     public static let configuration = CommandConfiguration(
@@ -10,14 +28,6 @@ public struct SceneCommand: ParsableCommand {
         subcommands: [Capture.self, Apply.self, List.self, Show.self, Delete.self])
 
     public init() {}
-
-    /// Result of `scene apply`.
-    struct ApplyResult: Codable {
-        struct Fixture: Codable { let address: Int; let name: String; let ok: Bool }
-        let name: String
-        let applied: Int
-        let fixtures: [Fixture]
-    }
 
     struct Capture: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Capture fixture state as a named scene.")
@@ -54,9 +64,10 @@ public struct SceneCommand: ParsableCommand {
                 let runner = ControlRunner(env: env, statePath: path,
                                            node: String(fixture.nodeAddress), timeout: timeout)
                 let response = try runner.status()
-                guard response.ok, let data = response.data else {
+                guard response.succeeded, let data = response.data else {
                     let detail = ControlResult.failureDetail(response, kind: "status")
-                    throw CLIError("could not capture fixture \(Capabilities.label(fixture)) at address \(fixture.nodeAddress): \(detail)")
+                    throw CLIError("could not capture fixture \(Capabilities.label(fixture)) "
+                        + "at address \(fixture.nodeAddress): \(detail)")
                 }
                 captured.append(SceneControl.sceneFixture(
                     parsed: try StatusReport.statusObject(data), fixture: fixture))
@@ -104,7 +115,7 @@ public struct SceneCommand: ParsableCommand {
             let byAddress = Dictionary(
                 state.fixtures.map { ($0.nodeAddress, $0) }, uniquingKeysWith: { first, _ in first })
 
-            var applied: [ApplyResult.Fixture] = []
+            var applied: [SceneApplyFixture] = []
             for entry in scene.fixtures {
                 if let selected, !selected.contains(entry.nodeAddress) { continue }
                 let fixture = byAddress[entry.nodeAddress]
@@ -116,14 +127,16 @@ public struct SceneCommand: ParsableCommand {
                     ? try runner.controlSequence(specs: specs)
                     : try runner.control(spec: specs[0])
                 let label = entry.name.isEmpty ? "fixture-\(entry.nodeAddress)" : entry.name
-                applied.append(ApplyResult.Fixture(address: entry.nodeAddress, name: label, ok: response.ok))
-                guard response.ok else {
-                    throw CLIError("could not apply scene fixture \(label): \(ControlResult.failureDetail(response, kind: "control"))")
+                applied.append(SceneApplyFixture(
+                    address: entry.nodeAddress, name: label, succeeded: response.succeeded))
+                guard response.succeeded else {
+                    throw CLIError("could not apply scene fixture \(label): "
+                        + "\(ControlResult.failureDetail(response, kind: "control"))")
                 }
             }
 
             if json {
-                print(JSONOutput.pretty(ApplyResult(name: name, applied: applied.count, fixtures: applied)))
+                print(JSONOutput.pretty(SceneApplyResult(name: name, applied: applied.count, fixtures: applied)))
             } else {
                 print("applied scene '\(name)' to \(applied.count) fixtures")
             }

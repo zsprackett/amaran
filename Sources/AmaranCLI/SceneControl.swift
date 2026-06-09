@@ -10,14 +10,14 @@ public enum SceneControl {
         let intensity = cct["intensity_percent"]?.doubleValue
             ?? cct["intensity"]?.doubleValue.map { $0 / 10 }
         let clampedCct = cct["cct"]?.intValue.map { Capabilities.clampCct($0, for: fixture) }
-        let gm = Capabilities.gmSupported(fixture) ? cct["gm"]?.intValue : nil
+        let greenMagenta = Capabilities.gmSupported(fixture) ? cct["gm"]?.intValue : nil
         return SceneFixture(
             nodeAddress: fixture.nodeAddress,
             name: Capabilities.label(fixture),
             macSuffix: MacAddress.suffix(fixture.macAddress),
             intensity: intensity,
             cct: clampedCct,
-            gm: gm,
+            greenMagenta: greenMagenta,
             sleepMode: cct["sleep_mode"]?.intValue)
     }
 
@@ -27,7 +27,7 @@ public enum SceneControl {
             nodeAddress: fixture.nodeAddress,
             name: Capabilities.label(fixture),
             macSuffix: MacAddress.suffix(fixture.macAddress),
-            intensity: nil, cct: nil, gm: nil, sleepMode: 0)
+            intensity: nil, cct: nil, greenMagenta: nil, sleepMode: 0)
     }
 
     /// Control specs to apply a captured scene fixture, mirroring `control()`.
@@ -39,8 +39,8 @@ public enum SceneControl {
 
         if let cct = entry.cct, let intensity = entry.intensity {
             let kelvin = Capabilities.clampCct(cct, for: fixture)
-            let gm = (caps.gmSupported && entry.gm != nil) ? entry.gm! : 10
-            return ["on", "cct:\(kelvin):\(trimFloat(intensity)):\(gm):0"]
+            let greenMagenta = (caps.gmSupported && entry.greenMagenta != nil) ? entry.greenMagenta! : 10
+            return ["on", "cct:\(kelvin):\(trimFloat(intensity)):\(greenMagenta):0"]
         }
         if let intensity = entry.intensity {
             return ["on", "intensity:\(trimFloat(intensity))"]
@@ -75,4 +75,3 @@ public enum SceneControl {
         throw CLIError("scene fixture not found: \(selector)")
     }
 }
-

@@ -1,0 +1,5 @@
+# Default SwiftLint rules. The only customization is excluding the SwiftPM
+# build directory, which contains vendored third-party dependency sources
+# (e.g. swift-argument-parser) that we do not own and do not lint.
+excluded:
+  - .build

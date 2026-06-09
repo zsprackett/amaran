@@ -28,12 +28,12 @@ public enum SidusBackup {
 
     static func extractedMeshFiles(_ backupPath: String) -> [SidusMeshFile] {
         let root = URL(fileURLWithPath: (backupPath as NSString).expandingTildeInPath).standardizedFileURL
-        let fm = FileManager.default
+        let fileManager = FileManager.default
         var rows: [SidusMeshFile] = []
 
         for domain in appDomains {
             let meshDir = root.appendingPathComponent(domain).appendingPathComponent("Documents/mesh")
-            guard let names = try? fm.contentsOfDirectory(atPath: meshDir.path) else { continue }
+            guard let names = try? fileManager.contentsOfDirectory(atPath: meshDir.path) else { continue }
             for name in names.filter({ $0.hasSuffix(".json") }).sorted() {
                 let url = meshDir.appendingPathComponent(name)
                 if let data = try? Data(contentsOf: url) {
@@ -44,7 +44,7 @@ public enum SidusBackup {
         if !rows.isEmpty { return rows }
 
         // Fallback: recursively find any Documents/mesh/*.json.
-        guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { return rows }
+        guard let enumerator = fileManager.enumerator(at: root, includingPropertiesForKeys: nil) else { return rows }
         for case let url as URL in enumerator where url.pathExtension == "json" {
             let parent = url.deletingLastPathComponent()
             guard parent.lastPathComponent == "mesh",
@@ -60,19 +60,19 @@ public enum SidusBackup {
     // MARK: - Backup directory discovery
 
     static func findBackupDir(_ path: String) -> URL? {
-        let fm = FileManager.default
+        let fileManager = FileManager.default
         let root = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
         func isBackup(_ dir: URL) -> Bool {
-            fm.fileExists(atPath: dir.appendingPathComponent("Manifest.plist").path)
-                && fm.fileExists(atPath: dir.appendingPathComponent("Manifest.db").path)
+            fileManager.fileExists(atPath: dir.appendingPathComponent("Manifest.plist").path)
+                && fileManager.fileExists(atPath: dir.appendingPathComponent("Manifest.db").path)
         }
         if isBackup(root) { return root }
-        guard let children = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else {
+        guard let children = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else {
             return nil
         }
         let candidates = children.filter {
             (try? $0.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
-                && fm.fileExists(atPath: $0.appendingPathComponent("Manifest.plist").path)
+                && fileManager.fileExists(atPath: $0.appendingPathComponent("Manifest.plist").path)
         }
         return candidates.count == 1 ? candidates[0] : nil
     }
@@ -81,15 +81,16 @@ public enum SidusBackup {
 
     static func unencryptedMeshFiles(_ backupDir: URL) throws -> [SidusMeshFile] {
         let manifest = backupDir.appendingPathComponent("Manifest.db").path
-        var db: OpaquePointer?
+        var database: OpaquePointer?
         // Immutable: the backup Manifest.db may be WAL-mode; read-only without the
         // -wal sidecar otherwise fails at first statement.
         let uri = "file:\(manifest)?immutable=1"
-        guard sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK, let db else {
-            sqlite3_close(db)
+        guard sqlite3_open_v2(uri, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) == SQLITE_OK,
+            let database else {
+            sqlite3_close(database)
             throw SourceError.notADatabase
         }
-        defer { sqlite3_close(db) }
+        defer { sqlite3_close(database) }
 
         let sql = """
         select fileID, domain, relativePath from Files
@@ -97,7 +98,7 @@ public enum SidusBackup {
         order by domain, relativePath
         """
         var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+        guard sqlite3_prepare_v2(database, sql, -1, &stmt, nil) == SQLITE_OK else {
             throw SourceError.notADatabase
         }
         defer { sqlite3_finalize(stmt) }

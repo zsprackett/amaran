@@ -16,11 +16,11 @@ public struct IdentifyPlan: Equatable {
         let intensity = cct["intensity_percent"]?.doubleValue
             ?? cct["intensity"]?.doubleValue.map { $0 / 10 }
         let kelvin = cct["cct"]?.intValue
-        let gm = cct["gm"]?.intValue ?? 10
+        let greenMagenta = cct["gm"]?.intValue ?? 10
         let gmFlag = cct["gm_flag"]?.intValue ?? 0
 
-        func cctSpec(_ k: Int, _ percent: Double) -> String {
-            "cct:\(k):\(trimFloat(percent)):\(gm):\(gmFlag)"
+        func cctSpec(_ kelvinValue: Int, _ percent: Double) -> String {
+            "cct:\(kelvinValue):\(trimFloat(percent)):\(greenMagenta):\(gmFlag)"
         }
 
         var restoreSpec: String

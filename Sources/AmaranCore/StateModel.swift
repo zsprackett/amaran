@@ -150,7 +150,7 @@ public struct Fixture: Codable, Equatable {
     private static let knownKeys: Set<String> = [
         "uuid", "mac_address", "code", "name", "node_address", "device_key",
         "device_uuid", "composition_data", "element_count", "update_time", "state",
-        "friendly_name", "mac_address_source", "control_only", "capabilities",
+        "friendly_name", "mac_address_source", "control_only", "capabilities"
     ]
 
     public init(
@@ -190,54 +190,54 @@ public struct Fixture: Codable, Equatable {
     }
 
     public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: DynamicCodingKey.self)
-        func key(_ k: String) -> DynamicCodingKey { DynamicCodingKey(stringValue: k) }
+        let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+        func key(_ rawKey: String) -> DynamicCodingKey { DynamicCodingKey(stringValue: rawKey) }
 
-        uuid = try c.decode(String.self, forKey: key("uuid"))
-        nodeAddress = try c.decode(Int.self, forKey: key("node_address"))
-        macAddress = try c.decodeIfPresent(String.self, forKey: key("mac_address")) ?? ""
-        code = try c.decodeIfPresent(String.self, forKey: key("code")) ?? ""
-        name = try c.decodeIfPresent(String.self, forKey: key("name")) ?? ""
-        deviceKey = try c.decodeIfPresent(String.self, forKey: key("device_key"))
-        deviceUUID = try c.decodeIfPresent(String.self, forKey: key("device_uuid"))
-        compositionData = try c.decodeIfPresent(String.self, forKey: key("composition_data")) ?? ""
-        elementCount = try c.decodeIfPresent(Int.self, forKey: key("element_count"))
-        updateTime = try c.decodeIfPresent(String.self, forKey: key("update_time")) ?? ""
-        state = try c.decodeIfPresent(Int.self, forKey: key("state")) ?? 0
-        friendlyName = try c.decodeIfPresent(String.self, forKey: key("friendly_name"))
-        macAddressSource = try c.decodeIfPresent(String.self, forKey: key("mac_address_source"))
-        controlOnly = try c.decodeIfPresent(Bool.self, forKey: key("control_only"))
-        capabilities = try c.decodeIfPresent(FixtureCapabilities.self, forKey: key("capabilities"))
+        uuid = try container.decode(String.self, forKey: key("uuid"))
+        nodeAddress = try container.decode(Int.self, forKey: key("node_address"))
+        macAddress = try container.decodeIfPresent(String.self, forKey: key("mac_address")) ?? ""
+        code = try container.decodeIfPresent(String.self, forKey: key("code")) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: key("name")) ?? ""
+        deviceKey = try container.decodeIfPresent(String.self, forKey: key("device_key"))
+        deviceUUID = try container.decodeIfPresent(String.self, forKey: key("device_uuid"))
+        compositionData = try container.decodeIfPresent(String.self, forKey: key("composition_data")) ?? ""
+        elementCount = try container.decodeIfPresent(Int.self, forKey: key("element_count"))
+        updateTime = try container.decodeIfPresent(String.self, forKey: key("update_time")) ?? ""
+        state = try container.decodeIfPresent(Int.self, forKey: key("state")) ?? 0
+        friendlyName = try container.decodeIfPresent(String.self, forKey: key("friendly_name"))
+        macAddressSource = try container.decodeIfPresent(String.self, forKey: key("mac_address_source"))
+        controlOnly = try container.decodeIfPresent(Bool.self, forKey: key("control_only"))
+        capabilities = try container.decodeIfPresent(FixtureCapabilities.self, forKey: key("capabilities"))
 
         var extra: [String: JSONValue] = [:]
-        for codingKey in c.allKeys where !Self.knownKeys.contains(codingKey.stringValue) {
-            extra[codingKey.stringValue] = try c.decode(JSONValue.self, forKey: codingKey)
+        for codingKey in container.allKeys where !Self.knownKeys.contains(codingKey.stringValue) {
+            extra[codingKey.stringValue] = try container.decode(JSONValue.self, forKey: codingKey)
         }
         self.extra = extra
     }
 
     public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: DynamicCodingKey.self)
-        func key(_ k: String) -> DynamicCodingKey { DynamicCodingKey(stringValue: k) }
+        var container = encoder.container(keyedBy: DynamicCodingKey.self)
+        func key(_ rawKey: String) -> DynamicCodingKey { DynamicCodingKey(stringValue: rawKey) }
 
-        try c.encode(uuid, forKey: key("uuid"))
-        try c.encode(macAddress, forKey: key("mac_address"))
-        try c.encode(code, forKey: key("code"))
-        try c.encode(name, forKey: key("name"))
-        try c.encode(nodeAddress, forKey: key("node_address"))
-        try c.encodeIfPresent(deviceKey, forKey: key("device_key"))
-        try c.encodeIfPresent(deviceUUID, forKey: key("device_uuid"))
-        try c.encode(compositionData, forKey: key("composition_data"))
-        try c.encodeIfPresent(elementCount, forKey: key("element_count"))
-        try c.encode(updateTime, forKey: key("update_time"))
-        try c.encode(state, forKey: key("state"))
-        try c.encodeIfPresent(friendlyName, forKey: key("friendly_name"))
-        try c.encodeIfPresent(macAddressSource, forKey: key("mac_address_source"))
-        try c.encodeIfPresent(controlOnly, forKey: key("control_only"))
-        try c.encodeIfPresent(capabilities, forKey: key("capabilities"))
+        try container.encode(uuid, forKey: key("uuid"))
+        try container.encode(macAddress, forKey: key("mac_address"))
+        try container.encode(code, forKey: key("code"))
+        try container.encode(name, forKey: key("name"))
+        try container.encode(nodeAddress, forKey: key("node_address"))
+        try container.encodeIfPresent(deviceKey, forKey: key("device_key"))
+        try container.encodeIfPresent(deviceUUID, forKey: key("device_uuid"))
+        try container.encode(compositionData, forKey: key("composition_data"))
+        try container.encodeIfPresent(elementCount, forKey: key("element_count"))
+        try container.encode(updateTime, forKey: key("update_time"))
+        try container.encode(state, forKey: key("state"))
+        try container.encodeIfPresent(friendlyName, forKey: key("friendly_name"))
+        try container.encodeIfPresent(macAddressSource, forKey: key("mac_address_source"))
+        try container.encodeIfPresent(controlOnly, forKey: key("control_only"))
+        try container.encodeIfPresent(capabilities, forKey: key("capabilities"))
 
         for (name, value) in extra {
-            try c.encode(value, forKey: key(name))
+            try container.encode(value, forKey: key(name))
         }
     }
 }
@@ -253,7 +253,7 @@ public struct Source: Codable, Equatable {
     public var extra: [String: JSONValue]
 
     private static let knownKeys: Set<String> = [
-        "type", "provisioned_at", "joined_at", "device_uuid", "node_address", "control_only",
+        "type", "provisioned_at", "joined_at", "device_uuid", "node_address", "control_only"
     ]
 
     public init(
@@ -275,36 +275,36 @@ public struct Source: Codable, Equatable {
     }
 
     public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: DynamicCodingKey.self)
-        func key(_ k: String) -> DynamicCodingKey { DynamicCodingKey(stringValue: k) }
+        let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+        func key(_ rawKey: String) -> DynamicCodingKey { DynamicCodingKey(stringValue: rawKey) }
 
-        type = try c.decode(String.self, forKey: key("type"))
-        provisionedAt = try c.decodeIfPresent(String.self, forKey: key("provisioned_at"))
-        joinedAt = try c.decodeIfPresent(String.self, forKey: key("joined_at"))
-        deviceUUID = try c.decodeIfPresent(String.self, forKey: key("device_uuid"))
-        nodeAddress = try c.decodeIfPresent(Int.self, forKey: key("node_address"))
-        controlOnly = try c.decodeIfPresent(Bool.self, forKey: key("control_only"))
+        type = try container.decode(String.self, forKey: key("type"))
+        provisionedAt = try container.decodeIfPresent(String.self, forKey: key("provisioned_at"))
+        joinedAt = try container.decodeIfPresent(String.self, forKey: key("joined_at"))
+        deviceUUID = try container.decodeIfPresent(String.self, forKey: key("device_uuid"))
+        nodeAddress = try container.decodeIfPresent(Int.self, forKey: key("node_address"))
+        controlOnly = try container.decodeIfPresent(Bool.self, forKey: key("control_only"))
 
         var extra: [String: JSONValue] = [:]
-        for codingKey in c.allKeys where !Self.knownKeys.contains(codingKey.stringValue) {
-            extra[codingKey.stringValue] = try c.decode(JSONValue.self, forKey: codingKey)
+        for codingKey in container.allKeys where !Self.knownKeys.contains(codingKey.stringValue) {
+            extra[codingKey.stringValue] = try container.decode(JSONValue.self, forKey: codingKey)
         }
         self.extra = extra
     }
 
     public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: DynamicCodingKey.self)
-        func key(_ k: String) -> DynamicCodingKey { DynamicCodingKey(stringValue: k) }
+        var container = encoder.container(keyedBy: DynamicCodingKey.self)
+        func key(_ rawKey: String) -> DynamicCodingKey { DynamicCodingKey(stringValue: rawKey) }
 
-        try c.encode(type, forKey: key("type"))
-        try c.encodeIfPresent(provisionedAt, forKey: key("provisioned_at"))
-        try c.encodeIfPresent(joinedAt, forKey: key("joined_at"))
-        try c.encodeIfPresent(deviceUUID, forKey: key("device_uuid"))
-        try c.encodeIfPresent(nodeAddress, forKey: key("node_address"))
-        try c.encodeIfPresent(controlOnly, forKey: key("control_only"))
+        try container.encode(type, forKey: key("type"))
+        try container.encodeIfPresent(provisionedAt, forKey: key("provisioned_at"))
+        try container.encodeIfPresent(joinedAt, forKey: key("joined_at"))
+        try container.encodeIfPresent(deviceUUID, forKey: key("device_uuid"))
+        try container.encodeIfPresent(nodeAddress, forKey: key("node_address"))
+        try container.encodeIfPresent(controlOnly, forKey: key("control_only"))
 
         for (name, value) in extra {
-            try c.encode(value, forKey: key(name))
+            try container.encode(value, forKey: key(name))
         }
     }
 }
@@ -330,14 +330,15 @@ public struct SceneFixture: Codable, Equatable {
     public var macSuffix: String
     public var intensity: Double?
     public var cct: Int?
-    public var gm: Int?
+    public var greenMagenta: Int?
     public var sleepMode: Int?
 
     enum CodingKeys: String, CodingKey {
         case nodeAddress = "node_address"
         case name
         case macSuffix = "mac_suffix"
-        case intensity, cct, gm
+        case intensity, cct
+        case greenMagenta = "gm"
         case sleepMode = "sleep_mode"
     }
 
@@ -347,7 +348,7 @@ public struct SceneFixture: Codable, Equatable {
         macSuffix: String,
         intensity: Double? = nil,
         cct: Int? = nil,
-        gm: Int? = nil,
+        greenMagenta: Int? = nil,
         sleepMode: Int? = nil
     ) {
         self.nodeAddress = nodeAddress
@@ -355,7 +356,7 @@ public struct SceneFixture: Codable, Equatable {
         self.macSuffix = macSuffix
         self.intensity = intensity
         self.cct = cct
-        self.gm = gm
+        self.greenMagenta = greenMagenta
         self.sleepMode = sleepMode
     }
 }

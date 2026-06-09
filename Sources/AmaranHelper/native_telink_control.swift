@@ -17,7 +17,7 @@ enum NativeTelinkControlError: Error, CustomStringConvertible {
 enum NativeTelinkControlCommand {
     case onOff(Bool)
     case brightness(percent: String)
-    case cct(kelvin: String, intensityPercent: String, gm: Int, gmFlag: Int)
+    case cct(kelvin: String, intensityPercent: String, greenMagenta: Int, gmFlag: Int)
     case raw(packetHex: String, packet: [UInt8])
     case status
 
@@ -29,33 +29,18 @@ enum NativeTelinkControlCommand {
 
         switch name {
         case "on":
-            guard parts.count == 1 else {
-                throw NativeTelinkControlError.invalidCommand(spec)
-            }
-            return .onOff(true)
+            return try parseToggle(spec: spec, parts: parts, turnOn: true)
         case "off":
-            guard parts.count == 1 else {
-                throw NativeTelinkControlError.invalidCommand(spec)
-            }
-            return .onOff(false)
+            return try parseToggle(spec: spec, parts: parts, turnOn: false)
         case "intensity":
             guard parts.count == 2 else {
                 throw NativeTelinkControlError.invalidCommand(spec)
             }
             return .brightness(percent: parts[1])
         case "cct":
-            guard parts.count == 5, let gm = Int(parts[3]), let gmFlag = Int(parts[4]) else {
-                throw NativeTelinkControlError.invalidCommand(spec)
-            }
-            return .cct(kelvin: parts[1], intensityPercent: parts[2], gm: gm, gmFlag: gmFlag)
+            return try parseCct(spec: spec, parts: parts)
         case "raw":
-            guard parts.count == 2 else {
-                throw NativeTelinkControlError.invalidCommand(spec)
-            }
-            return .raw(
-                packetHex: parts[1],
-                packet: try NativeTelinkControl.rawPacket(hex: parts[1])
-            )
+            return try parseRaw(spec: spec, parts: parts)
         case "status":
             guard parts.count == 1 else {
                 throw NativeTelinkControlError.invalidCommand(spec)
@@ -64,6 +49,32 @@ enum NativeTelinkControlCommand {
         default:
             throw NativeTelinkControlError.invalidCommand(spec)
         }
+    }
+
+    private static func parseToggle(
+        spec: String, parts: [String], turnOn: Bool
+    ) throws -> NativeTelinkControlCommand {
+        guard parts.count == 1 else {
+            throw NativeTelinkControlError.invalidCommand(spec)
+        }
+        return .onOff(turnOn)
+    }
+
+    private static func parseCct(spec: String, parts: [String]) throws -> NativeTelinkControlCommand {
+        guard parts.count == 5, let greenMagenta = Int(parts[3]), let gmFlag = Int(parts[4]) else {
+            throw NativeTelinkControlError.invalidCommand(spec)
+        }
+        return .cct(kelvin: parts[1], intensityPercent: parts[2], greenMagenta: greenMagenta, gmFlag: gmFlag)
+    }
+
+    private static func parseRaw(spec: String, parts: [String]) throws -> NativeTelinkControlCommand {
+        guard parts.count == 2 else {
+            throw NativeTelinkControlError.invalidCommand(spec)
+        }
+        return .raw(
+            packetHex: parts[1],
+            packet: try NativeTelinkControl.rawPacket(hex: parts[1])
+        )
     }
 
     func accessMessage() throws -> [UInt8] {
@@ -77,53 +88,72 @@ enum NativeTelinkControlCommand {
                 "control_command": turnOn ? "on" : "off",
                 "opcode": "Telink 0x26",
                 "packet_type": "sleep",
-                "packet_bytes": 10,
+                "packet_bytes": 10
             ]
         case .brightness(let percent):
-            let telinkIntensity = try NativeTelinkControl.percentToTelinkIntensity(percent)
-            return [
-                "control_command": "intensity",
-                "intensity": telinkIntensity,
-                "intensity_percent": Double(telinkIntensity) / 10.0,
-                "opcode": "Telink 0x26",
-                "packet_type": "brightness",
-                "packet_bytes": 10,
-            ]
-        case .cct(let kelvin, let intensityPercent, let gm, let gmFlag):
-            let telinkCct = try NativeTelinkControl.kelvinToTelinkCCT(kelvin)
-            let telinkIntensity = try NativeTelinkControl.percentToTelinkIntensity(intensityPercent)
-            return [
-                "cct": telinkCct,
-                "cct_kelvin": telinkCct * 10,
-                "control_command": "cct",
-                "gm": gm,
-                "gm_flag": gmFlag,
-                "intensity": telinkIntensity,
-                "intensity_percent": Double(telinkIntensity) / 10.0,
-                "opcode": "Telink 0x26",
-                "packet_type": "cct",
-                "packet_bytes": 10,
-            ]
+            return try brightnessMetadata(percent: percent)
+        case .cct(let kelvin, let intensityPercent, let greenMagenta, let gmFlag):
+            return try cctMetadata(
+                kelvin: kelvin,
+                intensityPercent: intensityPercent,
+                greenMagenta: greenMagenta,
+                gmFlag: gmFlag
+            )
         case .raw(let packetHex, let packet):
-            let telink = NativeTelinkControl.decodePacket(packet) ?? [:]
-            return [
-                "control_command": "raw",
-                "opcode": "Telink 0x26",
-                "packet_type": "raw",
-                "packet_bytes": 10,
-                "packet_hex": NativeMeshCrypto.hex(packet),
-                "requested_packet_hex": packetHex,
-                "command_type": telink["command_type"] ?? NSNull(),
-                "opera_type": telink["opera_type"] ?? NSNull(),
-            ]
+            return rawMetadata(packetHex: packetHex, packet: packet)
         case .status:
             return [
                 "control_command": "status",
                 "opcode": "Telink 0x26",
                 "packet_type": "read_data",
-                "packet_bytes": 10,
+                "packet_bytes": 10
             ]
         }
+    }
+
+    private func brightnessMetadata(percent: String) throws -> [String: Any] {
+        let telinkIntensity = try NativeTelinkControl.percentToTelinkIntensity(percent)
+        return [
+            "control_command": "intensity",
+            "intensity": telinkIntensity,
+            "intensity_percent": Double(telinkIntensity) / 10.0,
+            "opcode": "Telink 0x26",
+            "packet_type": "brightness",
+            "packet_bytes": 10
+        ]
+    }
+
+    private func cctMetadata(
+        kelvin: String, intensityPercent: String, greenMagenta: Int, gmFlag: Int
+    ) throws -> [String: Any] {
+        let telinkCct = try NativeTelinkControl.kelvinToTelinkCCT(kelvin)
+        let telinkIntensity = try NativeTelinkControl.percentToTelinkIntensity(intensityPercent)
+        return [
+            "cct": telinkCct,
+            "cct_kelvin": telinkCct * 10,
+            "control_command": "cct",
+            "gm": greenMagenta,
+            "gm_flag": gmFlag,
+            "intensity": telinkIntensity,
+            "intensity_percent": Double(telinkIntensity) / 10.0,
+            "opcode": "Telink 0x26",
+            "packet_type": "cct",
+            "packet_bytes": 10
+        ]
+    }
+
+    private func rawMetadata(packetHex: String, packet: [UInt8]) -> [String: Any] {
+        let telink = NativeTelinkControl.decodePacket(packet) ?? [:]
+        return [
+            "control_command": "raw",
+            "opcode": "Telink 0x26",
+            "packet_type": "raw",
+            "packet_bytes": 10,
+            "packet_hex": NativeMeshCrypto.hex(packet),
+            "requested_packet_hex": packetHex,
+            "command_type": telink["command_type"] ?? NSNull(),
+            "opera_type": telink["opera_type"] ?? NSNull()
+        ]
     }
 
     private func packet() throws -> [UInt8] {
@@ -134,11 +164,11 @@ enum NativeTelinkControlCommand {
             return try NativeTelinkControl.brightnessPacket(
                 telinkIntensity: NativeTelinkControl.percentToTelinkIntensity(percent)
             )
-        case .cct(let kelvin, let intensityPercent, let gm, let gmFlag):
+        case .cct(let kelvin, let intensityPercent, let greenMagenta, let gmFlag):
             return try NativeTelinkControl.cctPacket(
                 telinkCct: NativeTelinkControl.kelvinToTelinkCCT(kelvin),
                 telinkIntensity: NativeTelinkControl.percentToTelinkIntensity(intensityPercent),
-                gm: gm,
+                gm: greenMagenta,
                 gmFlag: gmFlag
             )
         case .raw(_, let packet):
@@ -201,48 +231,56 @@ struct NativeTelinkControl {
             "checksum_valid": checksum == expectedChecksum,
             "command_type": commandType,
             "opera_type": operaType,
-            "packet_bytes": packet.count,
+            "packet_bytes": packet.count
         ]
 
         if commandType == 0x02 {
-            let cctRaw = Int((low64 >> 52) & 0x3ff)
-            let cctFlag = Int((low64 >> 42) & 0x01)
-            let gmRaw = Int((low64 >> 45) & 0x7f)
-            let gmHigh = Int((low64 >> 44) & 0x01)
-            let gmFlag = Int((low64 >> 43) & 0x01)
-            let intensity = ((Int(high16) << 2) | Int((low64 >> 62) & 0x03)) & 0x3ff
-            let decodedCct = cctFlag == 1 ? cctRaw + 1000 : cctRaw
-            let decodedGm = gmHigh == 1 ? gmRaw + 100 : gmRaw
-            result["cct"] = [
-                "cct": cctRaw,
-                "cct_decoded": decodedCct,
-                "cct_kelvin": decodedCct * 10,
-                "cct_flag": cctFlag,
-                "gm": gmRaw,
-                "gm_decoded": decodedGm,
-                "gm_flag": gmFlag,
-                "gm_high": gmHigh,
-                "intensity": intensity,
-                "intensity_percent": Double(intensity) / 10.0,
-                "reserve": Int((low64 >> 9) & 0x1ffffffff),
-                "sleep_mode": Int((low64 >> 8) & 0x01),
-            ]
+            result["cct"] = decodeCctStatus(low64: low64, high16: high16)
         }
         if commandType == 0x0a {
-            result["color"] = [
-                "hue_candidate": Int(packet[3]),
-                "saturation_candidate": Int(packet[4]),
-                "value_candidate": Int(packet[5]),
-                "mode_candidate": Int(packet[7]),
-                "aux_candidate": Int(packet[8]),
-                "packet_hex": NativeMeshCrypto.hex(packet),
-            ]
+            result["color"] = decodeColorStatus(packet)
         }
 
         return result
     }
 
-    static func cctPacket(telinkCct: Int, telinkIntensity: Int, gm: Int, gmFlag: Int) throws -> [UInt8] {
+    private static func decodeCctStatus(low64: UInt64, high16: UInt16) -> [String: Any] {
+        let cctRaw = Int((low64 >> 52) & 0x3ff)
+        let cctFlag = Int((low64 >> 42) & 0x01)
+        let gmRaw = Int((low64 >> 45) & 0x7f)
+        let gmHigh = Int((low64 >> 44) & 0x01)
+        let gmFlag = Int((low64 >> 43) & 0x01)
+        let intensity = ((Int(high16) << 2) | Int((low64 >> 62) & 0x03)) & 0x3ff
+        let decodedCct = cctFlag == 1 ? cctRaw + 1000 : cctRaw
+        let decodedGm = gmHigh == 1 ? gmRaw + 100 : gmRaw
+        return [
+            "cct": cctRaw,
+            "cct_decoded": decodedCct,
+            "cct_kelvin": decodedCct * 10,
+            "cct_flag": cctFlag,
+            "gm": gmRaw,
+            "gm_decoded": decodedGm,
+            "gm_flag": gmFlag,
+            "gm_high": gmHigh,
+            "intensity": intensity,
+            "intensity_percent": Double(intensity) / 10.0,
+            "reserve": Int((low64 >> 9) & 0x1ffffffff),
+            "sleep_mode": Int((low64 >> 8) & 0x01)
+        ]
+    }
+
+    private static func decodeColorStatus(_ packet: [UInt8]) -> [String: Any] {
+        [
+            "hue_candidate": Int(packet[3]),
+            "saturation_candidate": Int(packet[4]),
+            "value_candidate": Int(packet[5]),
+            "mode_candidate": Int(packet[7]),
+            "aux_candidate": Int(packet[8]),
+            "packet_hex": NativeMeshCrypto.hex(packet)
+        ]
+    }
+
+    static func cctPacket(telinkCct: Int, telinkIntensity: Int, gm greenMagenta: Int, gmFlag: Int) throws -> [UInt8] {
         guard (80...2000).contains(telinkCct) else {
             throw NativeTelinkControlError.invalidParameter("cct must be between 80 and 2000")
         }
@@ -265,21 +303,21 @@ struct NativeTelinkControl {
 
         low64 |= UInt64(gmFlag & 0x01) << 43
         if gmFlag == 1 {
-            guard (0...255).contains(gm) else {
+            guard (0...255).contains(greenMagenta) else {
                 throw NativeTelinkControlError.invalidParameter("gm must be between 0 and 255")
             }
-            if gm < 101 {
-                high16 |= UInt16((gm >> 19) & 0xff)
-                low64 |= UInt64(gm) << 45
+            if greenMagenta < 101 {
+                high16 |= UInt16((greenMagenta >> 19) & 0xff)
+                low64 |= UInt64(greenMagenta) << 45
             } else {
-                low64 |= UInt64((gm + 0x1c) & 0x7f) << 45
+                low64 |= UInt64((greenMagenta + 0x1c) & 0x7f) << 45
                 low64 |= 0x0000_1000_0000_0000
             }
         } else {
-            guard (0...127).contains(gm) else {
+            guard (0...127).contains(greenMagenta) else {
                 throw NativeTelinkControlError.invalidParameter("gm must be between 0 and 127 when gm_flag is 0")
             }
-            low64 |= UInt64(gm & 0x7f) << 45
+            low64 |= UInt64(greenMagenta & 0x7f) << 45
         }
 
         return packetData(low64: low64, high16: high16)

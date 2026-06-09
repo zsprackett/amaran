@@ -4,13 +4,13 @@ import Testing
 @testable import AmaranCLI
 
 struct IosBackupDecryptTests {
-    private func hex(_ s: String) -> Data {
+    private func hex(_ hexString: String) -> Data {
         var data = Data()
-        var i = s.startIndex
-        while i < s.endIndex {
-            let j = s.index(i, offsetBy: 2)
-            data.append(UInt8(s[i..<j], radix: 16)!)
-            i = j
+        var index = hexString.startIndex
+        while index < hexString.endIndex {
+            let next = hexString.index(index, offsetBy: 2)
+            data.append(UInt8(hexString[index..<next], radix: 16)!)
+            index = next
         }
         return data
     }
@@ -52,11 +52,12 @@ struct IosBackupDecryptTests {
         let capacity = plaintext.count + 16
         var cipher = Data(count: capacity)
         var moved = 0
-        let iv = Data(count: 16)
-        _ = cipher.withUnsafeMutableBytes { c in plaintext.withUnsafeBytes { p in key.withUnsafeBytes { k in iv.withUnsafeBytes { ivp in
+        let ivData = Data(count: 16)
+        _ = cipher.withUnsafeMutableBytes { cipherPtr in plaintext.withUnsafeBytes { plainPtr in
+            key.withUnsafeBytes { keyPtr in ivData.withUnsafeBytes { ivPtr in
             CCCrypt(CCOperation(kCCEncrypt), CCAlgorithm(kCCAlgorithmAES), 0,
-                    k.baseAddress, key.count, ivp.baseAddress,
-                    p.baseAddress, plaintext.count, c.baseAddress, capacity, &moved)
+                    keyPtr.baseAddress, key.count, ivPtr.baseAddress,
+                    plainPtr.baseAddress, plaintext.count, cipherPtr.baseAddress, capacity, &moved)
         }}}}
         let decrypted = BackupCrypto.aesCBCDecrypt(key: key, data: cipher.prefix(moved))
         #expect(decrypted.prefix(plaintext.count) == plaintext)

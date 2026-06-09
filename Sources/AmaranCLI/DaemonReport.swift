@@ -4,7 +4,7 @@ import AmaranCore
 /// Formats daemon responses for display, matching the zsh dispatcher's output.
 public enum DaemonReport {
     public static func humanStatus(_ response: DaemonResponse) -> String {
-        guard response.ok, let data = response.data else {
+        guard response.succeeded, let data = response.data else {
             return "daemon error: \(response.error ?? "unknown")"
         }
         let pid = data["daemon"]?["pid"]?.intValue.map(String.init) ?? "?"

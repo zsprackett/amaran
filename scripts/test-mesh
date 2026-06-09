@@ -10,11 +10,29 @@ OUT="${TMPDIR:-/tmp}/amaran-mesh-tests"
 
 swiftc \
   "$ROOT/Sources/AmaranHelper/native_mesh_crypto.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_crypto_bytes.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_crypto_types.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_crypto_keys.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_crypto_transport.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_crypto_network.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_crypto_decode.swift" \
   "$ROOT/Sources/AmaranHelper/native_mesh_config.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_config_parsing.swift" \
   "$ROOT/Sources/AmaranHelper/native_mesh_provisioning.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_provisioning_session.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_provisioning_capture.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_provisioning_crypto.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_provisioning_transcript.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_provisioning_summary.swift" \
   "$ROOT/Sources/AmaranHelper/native_mesh_state.swift" \
+  "$ROOT/Sources/AmaranHelper/native_mesh_state_fixture.swift" \
   "$ROOT/Sources/AmaranHelper/native_telink_control.swift" \
   "$ROOT/tests/native_mesh_crypto_tests.swift" \
+  "$ROOT/tests/native_mesh_crypto_tests_cases.swift" \
+  "$ROOT/tests/native_mesh_crypto_tests_provisioning.swift" \
+  "$ROOT/tests/native_mesh_crypto_tests_sessions.swift" \
+  "$ROOT/tests/native_mesh_crypto_tests_vectors.swift" \
+  "$ROOT/tests/native_mesh_crypto_tests_network.swift" \
   -o "$OUT"
 
 "$OUT"

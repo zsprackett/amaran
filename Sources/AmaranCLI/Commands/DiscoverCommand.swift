@@ -2,6 +2,22 @@ import ArgumentParser
 import Foundation
 import AmaranCore
 
+/// JSON output shape for `amaran discover`.
+struct DiscoverOutput: Codable {
+    let discovered: Int
+    let range: String
+    let updatedState: Bool
+    let fixtures: [DiscoverFixture]
+    let misses: [DiscoverMiss]
+    let runtimeSourceRelocated: SourceRelocation?
+    enum CodingKeys: String, CodingKey {
+        case discovered, range
+        case updatedState = "updated_state"
+        case fixtures, misses
+        case runtimeSourceRelocated = "runtime_source_relocated"
+    }
+}
+
 /// `amaran discover --range <spec>` — probe an address range over one Mesh Proxy
 /// connection (`--status-batch`) and optionally add responsive control-only
 /// fixtures. Ported from `scripts/discover-existing-mesh` (batch path).
@@ -14,21 +30,6 @@ public struct DiscoverCommand: ParsableCommand {
     @Flag(name: .customLong("update-state"), help: "Keep responsive fixtures in local state.") var updateState = false
 
     public init() {}
-
-    struct Output: Codable {
-        let discovered: Int
-        let range: String
-        let updatedState: Bool
-        let fixtures: [DiscoverFixture]
-        let misses: [DiscoverMiss]
-        let runtimeSourceRelocated: SourceRelocation?
-        enum CodingKeys: String, CodingKey {
-            case discovered, range
-            case updatedState = "updated_state"
-            case fixtures, misses
-            case runtimeSourceRelocated = "runtime_source_relocated"
-        }
-    }
 
     public func run() throws {
         let opts = options.resolve()
@@ -47,7 +48,7 @@ public struct DiscoverCommand: ParsableCommand {
                     "--status-batch", addresses.map(String.init).joined(separator: ","),
                     "--settle-after-write", String(format: "%g", settle)]
         let response = try AppLauncher.runOneShot(appPath: opts.env.appPath, arguments: args)
-        guard response.ok, let data = response.data else {
+        guard response.succeeded, let data = response.data else {
             throw CLIError(response.error ?? "status batch failed")
         }
 
@@ -68,8 +69,8 @@ public struct DiscoverCommand: ParsableCommand {
             try StateLoading.save(state, to: opts.statePath)
         }
 
-        let output = Output(discovered: found.count, range: range, updatedState: updateState,
-                            fixtures: found, misses: misses, runtimeSourceRelocated: relocation)
+        let output = DiscoverOutput(discovered: found.count, range: range, updatedState: updateState,
+                                    fixtures: found, misses: misses, runtimeSourceRelocated: relocation)
         if opts.json {
             print(JSONOutput.pretty(output))
         } else {
@@ -78,7 +79,8 @@ public struct DiscoverCommand: ParsableCommand {
                 print("\(fixture.address)\t\(fixture.name)\t\(detail(fixture))")
             }
             if let relocation {
-                print("runtime source moved \(relocation.from)->\(relocation.to) to avoid scanned fixture addresses")
+                print("runtime source moved \(relocation.from)->\(relocation.toAddress) "
+                    + "to avoid scanned fixture addresses")
             }
             if !updateState {
                 print("state fixtures unchanged; sequence counters may be advanced")
@@ -90,7 +92,7 @@ public struct DiscoverCommand: ParsableCommand {
         var parts: [String] = []
         if let intensity = fixture.intensity { parts.append("\(ControlSpecBuilder.trimFloat(intensity))%") }
         if let cct = fixture.cct { parts.append("\(cct)K") }
-        if let gm = fixture.gm { parts.append("gm=\(gm)") }
+        if let greenMagenta = fixture.greenMagenta { parts.append("gm=\(greenMagenta)") }
         if let sleep = fixture.sleepMode { parts.append("sleep=\(sleep)") }
         return parts.joined(separator: ", ")
     }

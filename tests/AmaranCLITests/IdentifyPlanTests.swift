@@ -19,7 +19,7 @@ struct IdentifyPlanTests {
             "off", "on", "cct:5600:40:4:0",
             "off", "on", "cct:5600:40:4:0",
             "off", "on", "cct:5600:40:4:0",
-            "on", "cct:5600:40:4:0", "cct:5600:40:4:0",
+            "on", "cct:5600:40:4:0", "cct:5600:40:4:0"
         ])
     }
 
@@ -32,7 +32,7 @@ struct IdentifyPlanTests {
             "on", "cct:5600:100:10:0", "off",
             "on", "cct:5600:100:10:0", "off",
             "on", "cct:5600:100:10:0", "off",
-            "off",
+            "off"
         ])
     }
 }

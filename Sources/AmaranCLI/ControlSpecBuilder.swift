@@ -7,9 +7,9 @@ import AmaranCore
 public enum ControlSpecBuilder {
     /// Whether `cct` needs a status read: when intensity is omitted, or GM is
     /// omitted on a GM-capable fixture.
-    public static func cctNeedsStatus(intensityPercent: Double?, gm: Int?, fixture: Fixture) -> Bool {
+    public static func cctNeedsStatus(intensityPercent: Double?, gm greenMagenta: Int?, fixture: Fixture) -> Bool {
         let gmSupported = Capabilities.gmSupported(fixture)
-        return intensityPercent == nil || (gm == nil && gmSupported)
+        return intensityPercent == nil || (greenMagenta == nil && gmSupported)
     }
 
     public struct CctSpec {
@@ -44,20 +44,20 @@ public enum ControlSpecBuilder {
             throw CLIError("status did not include current intensity")
         }
 
-        let gm: Int
+        let greenMagenta: Int
         let gmFlag: Int
         if let gmArg {
-            gm = try validatedGM(gmArg)
+            greenMagenta = try validatedGM(gmArg)
             gmFlag = 0
         } else if !caps.gmSupported {
-            gm = 10
+            greenMagenta = 10
             gmFlag = 0
         } else {
-            gm = current?.gm ?? 10
+            greenMagenta = current?.greenMagenta ?? 10
             gmFlag = current?.gmFlag ?? 0
         }
 
-        let spec = "cct:\(kelvin):\(trimFloat(intensityPercentValue)):\(gm):\(gmFlag)"
+        let spec = "cct:\(kelvin):\(trimFloat(intensityPercentValue)):\(greenMagenta):\(gmFlag)"
         return CctSpec(spec: spec, clampWarning: warning)
     }
 
@@ -68,14 +68,14 @@ public enum ControlSpecBuilder {
         guard Capabilities.gmSupported(fixture) else {
             throw CLIError("\(label) does not support green-magenta correction")
         }
-        let gm = try validatedGM(gmArg)
+        let greenMagenta = try validatedGM(gmArg)
         guard let kelvin = current.cctKelvin else {
             throw CLIError("status did not include current CCT")
         }
         guard let tenths = current.intensityTenths else {
             throw CLIError("status did not include current intensity")
         }
-        return "cct:\(kelvin):\(trimFloat(tenths / 10.0)):\(gm):0"
+        return "cct:\(kelvin):\(trimFloat(tenths / 10.0)):\(greenMagenta):0"
     }
 
     // MARK: - Validation
