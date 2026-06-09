@@ -170,7 +170,7 @@ The first diagnostic is:
 ./bin/amaran join-capture --output-state /private/tmp/amaran-sidus-capture.json --timeout 120
 ```
 
-This launches `BluetoothProbe.app` as a CoreBluetooth peripheral, advertises
+This launches `AmaranHelper.app` as a CoreBluetooth peripheral, advertises
 Mesh Provisioning service `0x1827`, and waits for Sidus Link Pro to provision
 the Mac as a dummy no-OOB mesh node. If Sidus accepts it, the capture file gets:
 

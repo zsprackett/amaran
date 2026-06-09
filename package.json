@@ -8,9 +8,9 @@
   "scripts": {
     "amaran": "./bin/amaran",
     "build": "swift build -c release",
-    "build:bluetooth-helper": "scripts/build-bluetooth-probe",
+    "build:amaran-helper": "scripts/build-amaran-helper",
     "test": "npm run test:core && npm run test:mesh",
     "test:core": "swift test",
-    "test:mesh": "swiftc Sources/BluetoothProbe/native_mesh_crypto.swift Sources/BluetoothProbe/native_mesh_config.swift Sources/BluetoothProbe/native_mesh_provisioning.swift Sources/BluetoothProbe/native_mesh_state.swift Sources/BluetoothProbe/native_telink_control.swift tests/native_mesh_crypto_tests.swift -o /tmp/amaran-mesh-tests && /tmp/amaran-mesh-tests"
+    "test:mesh": "swiftc Sources/AmaranHelper/native_mesh_crypto.swift Sources/AmaranHelper/native_mesh_config.swift Sources/AmaranHelper/native_mesh_provisioning.swift Sources/AmaranHelper/native_mesh_state.swift Sources/AmaranHelper/native_telink_control.swift tests/native_mesh_crypto_tests.swift -o /tmp/amaran-mesh-tests && /tmp/amaran-mesh-tests"
   }
 }

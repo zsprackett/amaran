@@ -1,5 +1,5 @@
 > **Swift CLI port (current):** The CLI is now a native Swift binary (SwiftPM:
-> `Sources/AmaranCore`, `AmaranCLI`, `amaran`, `BluetoothProbe`). `bin/amaran` is a
+> `Sources/AmaranCore`, `AmaranCLI`, `amaran`, `AmaranHelper`). `bin/amaran` is a
 > thin shim that builds and execs it; there is no Python. See `docs/swift-cli-port.md`.
 > Sections below that describe a zsh dispatcher or Python helpers predate the cutover.
 
@@ -12,7 +12,7 @@ Read `AGENTS.md` first. The important constraints are:
 
 - Do not print, log, commit, or share mesh NetKeys, AppKeys, DeviceKeys, session
   keys, or any real `state.json` contents.
-- Runtime control currently uses local CLI state and `BluetoothProbe.app`.
+- Runtime control currently uses local CLI state and `AmaranHelper.app`.
 - The old amaran Desktop / PyMeshSDK fallback path has been removed.
 - Keep commits local unless explicitly asked to push.
 
@@ -35,7 +35,7 @@ The repo has an experimental macOS diagnostic:
 ./bin/amaran join-capture --output-state /private/tmp/amaran-sidus-capture.json --timeout 120
 ```
 
-It launches `BluetoothProbe.app` as a CoreBluetooth peripheral and advertises:
+It launches `AmaranHelper.app` as a CoreBluetooth peripheral and advertises:
 
 - Local name: `amaran 60x S`
 - Mesh Provisioning service UUID: `0x1827`
@@ -187,6 +187,6 @@ Validation commands:
 ```sh
 swift build -c release      # also: ./bin/amaran builds on first run
 npm test                    # test:core (swift test) + test:mesh
-npm run build:bluetooth-helper
+npm run build:amaran-helper
 git diff --check
 ```

@@ -6,13 +6,13 @@ import os
 
 /// Unified-logging facade for the probe.
 ///
-/// The daemon is launched via `open -g BluetoothProbe.app`, so stderr is
+/// The daemon is launched via `open -g AmaranHelper.app`, so stderr is
 /// discarded by launchd/Launch Services. Routing daemon-context logs through
 /// `os.Logger` keeps them in the system log store where they can be streamed
 /// with `log stream` / `log show` (see `amaran daemon logs`) or Console.app.
 /// One-shot CLI invocations continue to use stderr, which the wrapper captures.
 enum Log {
-    static let subsystem = "dev.local.bluetooth-probe"
+    static let subsystem = "dev.local.amaran-helper"
     static let daemon = Logger(subsystem: subsystem, category: "daemon")
     static let ble = Logger(subsystem: subsystem, category: "ble")
     static let mesh = Logger(subsystem: subsystem, category: "mesh")
@@ -31,7 +31,7 @@ func cbuuidString(_ uuid: CBUUID) -> String {
     uuid.uuidString.uppercased()
 }
 
-enum BluetoothProbeError: Error, CustomStringConvertible {
+enum AmaranHelperError: Error, CustomStringConvertible {
     case invalidHex(String)
     case invalidState(String)
 
@@ -48,7 +48,7 @@ enum BluetoothProbeError: Error, CustomStringConvertible {
 func bytes(hex: String) throws -> [UInt8] {
     let compact = hex.filter { !$0.isWhitespace && $0 != ":" && $0 != "-" }
     guard compact.count % 2 == 0 else {
-        throw BluetoothProbeError.invalidHex(hex)
+        throw AmaranHelperError.invalidHex(hex)
     }
 
     var result: [UInt8] = []
@@ -57,7 +57,7 @@ func bytes(hex: String) throws -> [UInt8] {
     while index < compact.endIndex {
         let next = compact.index(index, offsetBy: 2)
         guard let byte = UInt8(compact[index..<next], radix: 16) else {
-            throw BluetoothProbeError.invalidHex(hex)
+            throw AmaranHelperError.invalidHex(hex)
         }
         result.append(byte)
         index = next
@@ -132,10 +132,10 @@ struct NativePreparedProxyPduSequence {
 
 func segmentProxyProtocolPdu(_ proxyPdu: [UInt8], maxWriteLength: Int) throws -> [[UInt8]] {
     guard maxWriteLength >= 2 else {
-        throw BluetoothProbeError.invalidState("proxy write maximum length must leave room for a header and payload")
+        throw AmaranHelperError.invalidState("proxy write maximum length must leave room for a header and payload")
     }
     guard let header = proxyPdu.first else {
-        throw BluetoothProbeError.invalidState("Proxy PDU must not be empty")
+        throw AmaranHelperError.invalidState("Proxy PDU must not be empty")
     }
     guard proxyPdu.count > maxWriteLength else {
         return [proxyPdu]
@@ -187,7 +187,7 @@ struct IncomingSegmentedAccessAccumulator {
               decoded.szmic == szmic,
               decoded.seqZero == seqZero,
               decoded.segN == segN else {
-            throw BluetoothProbeError.invalidState("segmented access PDU does not match pending reassembly")
+            throw AmaranHelperError.invalidState("segmented access PDU does not match pending reassembly")
         }
         segments[decoded.segO] = (sequence: sequence, lowerTransportPdu: lowerTransportPdu)
     }
@@ -269,11 +269,11 @@ func selectFixture(_ fixtures: [[String: Any]], nodeID: String?) throws -> [Stri
         }) {
             return fixture
         }
-        throw BluetoothProbeError.invalidState("fixture not found: \(nodeID)")
+        throw AmaranHelperError.invalidState("fixture not found: \(nodeID)")
     }
 
     guard fixtures.count == 1 else {
-        throw BluetoothProbeError.invalidState("multiple fixtures found; pass --node")
+        throw AmaranHelperError.invalidState("multiple fixtures found; pass --node")
     }
     return fixtures[0]
 }
@@ -285,24 +285,24 @@ func prepareNativeProxyStateProbe(
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
     guard let mesh = payload["mesh"] as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file is missing mesh data")
+        throw AmaranHelperError.invalidState("state file is missing mesh data")
     }
     guard let fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-        throw BluetoothProbeError.invalidState("state file is missing fixtures")
+        throw AmaranHelperError.invalidState("state file is missing fixtures")
     }
     guard let netKeyHex = jsonString(mesh["net_key"]) else {
-        throw BluetoothProbeError.invalidState("state mesh data missing NetKey")
+        throw AmaranHelperError.invalidState("state mesh data missing NetKey")
     }
 
     let fixture = try selectFixture(fixtures, nodeID: nodeID)
     guard let destination = jsonInt(fixture["node_address"]), (1...0x7fff).contains(destination) else {
-        throw BluetoothProbeError.invalidState("fixture has invalid node address")
+        throw AmaranHelperError.invalidState("fixture has invalid node address")
     }
 
     let netKey = try NativeMeshCrypto.bytes(hex: netKeyHex)
@@ -324,27 +324,27 @@ func prepareNativeMeshMonitor(
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
     guard let mesh = payload["mesh"] as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file is missing mesh data")
+        throw AmaranHelperError.invalidState("state file is missing mesh data")
     }
     guard let fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-        throw BluetoothProbeError.invalidState("state file is missing fixtures")
+        throw AmaranHelperError.invalidState("state file is missing fixtures")
     }
     guard let netKeyHex = jsonString(mesh["net_key"]),
           let appKeyHex = jsonString(mesh["app_key"]) else {
-        throw BluetoothProbeError.invalidState("state mesh data missing keys")
+        throw AmaranHelperError.invalidState("state mesh data missing keys")
     }
     var runtime = payload["runtime"] as? [String: Any] ?? [:]
     let ivIndex = jsonInt(runtime["iv_index"]) ?? 0
 
     let fixture = try selectFixture(fixtures, nodeID: nodeID)
     guard let destination = jsonInt(fixture["node_address"]), (1...0x7fff).contains(destination) else {
-        throw BluetoothProbeError.invalidState("fixture has invalid node address")
+        throw AmaranHelperError.invalidState("fixture has invalid node address")
     }
     let sourceAddress = try nativeRuntimeSourceAddress(
         runtime: runtime,
@@ -353,7 +353,7 @@ func prepareNativeMeshMonitor(
     )
     let sequenceNext = jsonInt(runtime["sequence_next"]) ?? 1
     guard (0...0x00ff_fffe).contains(sequenceNext) else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next is exhausted or invalid")
+        throw AmaranHelperError.invalidState("runtime sequence_next is exhausted or invalid")
     }
 
     let netKey = try NativeMeshCrypto.bytes(hex: netKeyHex)
@@ -475,7 +475,7 @@ func nextProvisioningUnicastAddress(
             return UInt16(candidate)
         }
     }
-    throw BluetoothProbeError.invalidState("could not choose an unused fixture node address")
+    throw AmaranHelperError.invalidState("could not choose an unused fixture node address")
 }
 
 func nativeRuntimeSourceAddress(
@@ -486,7 +486,7 @@ func nativeRuntimeSourceAddress(
     let occupied = occupiedFixtureAddresses(fixtures)
     let existing = jsonInt(runtime["source_address"])
     if let existing, !(1...0x7fff).contains(existing) {
-        throw BluetoothProbeError.invalidState("runtime source_address must be a unicast address")
+        throw AmaranHelperError.invalidState("runtime source_address must be a unicast address")
     }
     if let existing,
        existing != 1,
@@ -506,7 +506,7 @@ func nativeRuntimeSourceAddress(
     if !occupied.contains(2), destination != 2 {
         return 2
     }
-    throw BluetoothProbeError.invalidState("could not choose an unused CLI source address")
+    throw AmaranHelperError.invalidState("could not choose an unused CLI source address")
 }
 
 func nativeTelinkSourceAddress(
@@ -517,7 +517,7 @@ func nativeTelinkSourceAddress(
     let occupied = occupiedFixtureAddresses(fixtures)
     let existing = jsonInt(runtime["telink_source_address"])
     if let existing, !(1...0x7fff).contains(existing) {
-        throw BluetoothProbeError.invalidState("runtime telink_source_address must be a unicast address")
+        throw AmaranHelperError.invalidState("runtime telink_source_address must be a unicast address")
     }
     if let existing,
        existing != destination,
@@ -544,7 +544,7 @@ func nativeTelinkSourceAddress(
     let blocked = occupied.union(destinations)
     let existing = jsonInt(runtime["telink_source_address"])
     if let existing, !(1...0x7fff).contains(existing) {
-        throw BluetoothProbeError.invalidState("runtime telink_source_address must be a unicast address")
+        throw AmaranHelperError.invalidState("runtime telink_source_address must be a unicast address")
     }
     if let existing,
        !blocked.contains(existing) {
@@ -562,20 +562,20 @@ func nativeTelinkSourceAddress(
     if !blocked.contains(2) {
         return 2
     }
-    throw BluetoothProbeError.invalidState("could not choose an unused Telink source address")
+    throw AmaranHelperError.invalidState("could not choose an unused Telink source address")
 }
 
 func parseUnicastAddressList(_ spec: String) throws -> [Int] {
     let parts = spec.split(separator: ",", omittingEmptySubsequences: true)
     guard !parts.isEmpty else {
-        throw BluetoothProbeError.invalidState("status batch requires at least one address")
+        throw AmaranHelperError.invalidState("status batch requires at least one address")
     }
     var seen = Set<Int>()
     var addresses: [Int] = []
     for part in parts {
         guard let address = Int(part.trimmingCharacters(in: .whitespacesAndNewlines), radix: 10),
               (1...0x7fff).contains(address) else {
-            throw BluetoothProbeError.invalidState("status batch contains an invalid unicast address")
+            throw AmaranHelperError.invalidState("status batch contains an invalid unicast address")
         }
         if !seen.contains(address) {
             seen.insert(address)
@@ -601,24 +601,24 @@ func reserveNativeAccessProxyPdu(
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
     guard let mesh = payload["mesh"] as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file is missing mesh data")
+        throw AmaranHelperError.invalidState("state file is missing mesh data")
     }
     guard let fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-        throw BluetoothProbeError.invalidState("state file is missing fixtures")
+        throw AmaranHelperError.invalidState("state file is missing fixtures")
     }
     guard let netKeyHex = jsonString(mesh["net_key"]), let appKeyHex = jsonString(mesh["app_key"]) else {
-        throw BluetoothProbeError.invalidState("state mesh data missing keys")
+        throw AmaranHelperError.invalidState("state mesh data missing keys")
     }
 
     let fixture = try selectFixture(fixtures, nodeID: nodeID)
     guard let destination = jsonInt(fixture["node_address"]), (1...0x7fff).contains(destination) else {
-        throw BluetoothProbeError.invalidState("fixture has invalid node address")
+        throw AmaranHelperError.invalidState("fixture has invalid node address")
     }
 
     var runtime = payload["runtime"] as? [String: Any] ?? [:]
@@ -641,7 +641,7 @@ func reserveNativeAccessProxyPdu(
 
     let sequenceNext = jsonInt(runtime["sequence_next"]) ?? 1
     guard (0...0x00ff_fffe).contains(sequenceNext) else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next is exhausted or invalid")
+        throw AmaranHelperError.invalidState("runtime sequence_next is exhausted or invalid")
     }
 
     let netKey = try NativeMeshCrypto.bytes(hex: netKeyHex)
@@ -739,7 +739,7 @@ func reserveNativeControlProxyPdus(
     commands: [NativeTelinkControlCommand]
 ) throws -> NativePreparedProxyPduSequence {
     guard !commands.isEmpty else {
-        throw BluetoothProbeError.invalidState("control sequence requires at least one command")
+        throw AmaranHelperError.invalidState("control sequence requires at least one command")
     }
 
     let prepared = try commands.map { command in
@@ -754,7 +754,7 @@ func reserveNativeControlProxyPdus(
     }
 
     guard let first = prepared.first else {
-        throw BluetoothProbeError.invalidState("control sequence requires at least one prepared PDU")
+        throw AmaranHelperError.invalidState("control sequence requires at least one prepared PDU")
     }
 
     let commandMetadata = prepared.map(\.metadata)
@@ -804,28 +804,28 @@ func reserveNativeStatusProxyPdus(
     addresses: [Int]
 ) throws -> NativePreparedProxyPduSequence {
     guard !addresses.isEmpty else {
-        throw BluetoothProbeError.invalidState("status batch requires at least one address")
+        throw AmaranHelperError.invalidState("status batch requires at least one address")
     }
     guard addresses.allSatisfy({ (1...0x7fff).contains($0) }) else {
-        throw BluetoothProbeError.invalidState("status batch contains a non-unicast address")
+        throw AmaranHelperError.invalidState("status batch contains a non-unicast address")
     }
 
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
     guard let mesh = payload["mesh"] as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file is missing mesh data")
+        throw AmaranHelperError.invalidState("state file is missing mesh data")
     }
     guard let fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-        throw BluetoothProbeError.invalidState("state file is missing fixtures")
+        throw AmaranHelperError.invalidState("state file is missing fixtures")
     }
     guard let netKeyHex = jsonString(mesh["net_key"]), let appKeyHex = jsonString(mesh["app_key"]) else {
-        throw BluetoothProbeError.invalidState("state mesh data missing keys")
+        throw AmaranHelperError.invalidState("state mesh data missing keys")
     }
 
     var runtime = payload["runtime"] as? [String: Any] ?? [:]
@@ -837,11 +837,11 @@ func reserveNativeStatusProxyPdus(
     )
     let sequenceNext = jsonInt(runtime["sequence_next"]) ?? 1
     guard (0...0x00ff_fffe).contains(sequenceNext) else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next is exhausted or invalid")
+        throw AmaranHelperError.invalidState("runtime sequence_next is exhausted or invalid")
     }
     let nextSequence = sequenceNext + addresses.count
     guard nextSequence <= 0x00ff_ffff else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next does not have room for discover batch")
+        throw AmaranHelperError.invalidState("runtime sequence_next does not have room for discover batch")
     }
 
     let netKey = try NativeMeshCrypto.bytes(hex: netKeyHex)
@@ -908,27 +908,27 @@ func reserveNativeConfigCompositionGetProxyPdu(
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
     guard let mesh = payload["mesh"] as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file is missing mesh data")
+        throw AmaranHelperError.invalidState("state file is missing mesh data")
     }
     guard let fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-        throw BluetoothProbeError.invalidState("state file is missing fixtures")
+        throw AmaranHelperError.invalidState("state file is missing fixtures")
     }
     guard let netKeyHex = jsonString(mesh["net_key"]), let appKeyHex = jsonString(mesh["app_key"]) else {
-        throw BluetoothProbeError.invalidState("state mesh data missing keys")
+        throw AmaranHelperError.invalidState("state mesh data missing keys")
     }
 
     let fixture = try selectFixture(fixtures, nodeID: nodeID)
     guard let destination = jsonInt(fixture["node_address"]), (1...0x7fff).contains(destination) else {
-        throw BluetoothProbeError.invalidState("fixture has invalid node address")
+        throw AmaranHelperError.invalidState("fixture has invalid node address")
     }
     guard let deviceKeyHex = jsonString(fixture["device_key"]) else {
-        throw BluetoothProbeError.invalidState("fixture is missing device key")
+        throw AmaranHelperError.invalidState("fixture is missing device key")
     }
 
     var runtime = payload["runtime"] as? [String: Any] ?? [:]
@@ -941,7 +941,7 @@ func reserveNativeConfigCompositionGetProxyPdu(
 
     let sequenceNext = jsonInt(runtime["sequence_next"]) ?? 1
     guard (0...0x00ff_fffe).contains(sequenceNext) else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next is exhausted or invalid")
+        throw AmaranHelperError.invalidState("runtime sequence_next is exhausted or invalid")
     }
 
     let netKey = try NativeMeshCrypto.bytes(hex: netKeyHex)
@@ -1008,27 +1008,27 @@ func reserveNativeConfigAppKeyGetProxyPdu(
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
     guard let mesh = payload["mesh"] as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file is missing mesh data")
+        throw AmaranHelperError.invalidState("state file is missing mesh data")
     }
     guard let fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-        throw BluetoothProbeError.invalidState("state file is missing fixtures")
+        throw AmaranHelperError.invalidState("state file is missing fixtures")
     }
     guard let netKeyHex = jsonString(mesh["net_key"]), let appKeyHex = jsonString(mesh["app_key"]) else {
-        throw BluetoothProbeError.invalidState("state mesh data missing keys")
+        throw AmaranHelperError.invalidState("state mesh data missing keys")
     }
 
     let fixture = try selectFixture(fixtures, nodeID: nodeID)
     guard let destination = jsonInt(fixture["node_address"]), (1...0x7fff).contains(destination) else {
-        throw BluetoothProbeError.invalidState("fixture has invalid node address")
+        throw AmaranHelperError.invalidState("fixture has invalid node address")
     }
     guard let deviceKeyHex = jsonString(fixture["device_key"]) else {
-        throw BluetoothProbeError.invalidState("fixture is missing device key")
+        throw AmaranHelperError.invalidState("fixture is missing device key")
     }
 
     var runtime = payload["runtime"] as? [String: Any] ?? [:]
@@ -1041,7 +1041,7 @@ func reserveNativeConfigAppKeyGetProxyPdu(
 
     let sequenceNext = jsonInt(runtime["sequence_next"]) ?? 1
     guard (0...0x00ff_fffe).contains(sequenceNext) else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next is exhausted or invalid")
+        throw AmaranHelperError.invalidState("runtime sequence_next is exhausted or invalid")
     }
 
     let netKey = try NativeMeshCrypto.bytes(hex: netKeyHex)
@@ -1108,27 +1108,27 @@ func reserveNativeConfigAppKeyAddProxyPdus(
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
     guard let mesh = payload["mesh"] as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file is missing mesh data")
+        throw AmaranHelperError.invalidState("state file is missing mesh data")
     }
     guard let fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-        throw BluetoothProbeError.invalidState("state file is missing fixtures")
+        throw AmaranHelperError.invalidState("state file is missing fixtures")
     }
     guard let netKeyHex = jsonString(mesh["net_key"]), let appKeyHex = jsonString(mesh["app_key"]) else {
-        throw BluetoothProbeError.invalidState("state mesh data missing keys")
+        throw AmaranHelperError.invalidState("state mesh data missing keys")
     }
 
     let fixture = try selectFixture(fixtures, nodeID: nodeID)
     guard let destination = jsonInt(fixture["node_address"]), (1...0x7fff).contains(destination) else {
-        throw BluetoothProbeError.invalidState("fixture has invalid node address")
+        throw AmaranHelperError.invalidState("fixture has invalid node address")
     }
     guard let deviceKeyHex = jsonString(fixture["device_key"]) else {
-        throw BluetoothProbeError.invalidState("fixture is missing device key")
+        throw AmaranHelperError.invalidState("fixture is missing device key")
     }
 
     var runtime = payload["runtime"] as? [String: Any] ?? [:]
@@ -1141,7 +1141,7 @@ func reserveNativeConfigAppKeyAddProxyPdus(
 
     let sequenceNext = jsonInt(runtime["sequence_next"]) ?? 1
     guard (0...0x00ff_fffe).contains(sequenceNext) else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next is exhausted or invalid")
+        throw AmaranHelperError.invalidState("runtime sequence_next is exhausted or invalid")
     }
 
     let netKey = try NativeMeshCrypto.bytes(hex: netKeyHex)
@@ -1165,7 +1165,7 @@ func reserveNativeConfigAppKeyAddProxyPdus(
         accessMessage: accessMessage
     )
     guard sequenceNext + built.proxyPdus.count <= 0x00ff_ffff else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next does not have room for segmented config send")
+        throw AmaranHelperError.invalidState("runtime sequence_next does not have room for segmented config send")
     }
 
     let nextSequence = sequenceNext + built.proxyPdus.count
@@ -1225,41 +1225,41 @@ func reserveNativeConfigModelAppBindProxyPdu(
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
     guard let mesh = payload["mesh"] as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file is missing mesh data")
+        throw AmaranHelperError.invalidState("state file is missing mesh data")
     }
     guard let fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-        throw BluetoothProbeError.invalidState("state file is missing fixtures")
+        throw AmaranHelperError.invalidState("state file is missing fixtures")
     }
     guard let netKeyHex = jsonString(mesh["net_key"]), let appKeyHex = jsonString(mesh["app_key"]) else {
-        throw BluetoothProbeError.invalidState("state mesh data missing keys")
+        throw AmaranHelperError.invalidState("state mesh data missing keys")
     }
 
     let fixture = try selectFixture(fixtures, nodeID: nodeID)
     guard let destination = jsonInt(fixture["node_address"]), (1...0x7fff).contains(destination) else {
-        throw BluetoothProbeError.invalidState("fixture has invalid node address")
+        throw AmaranHelperError.invalidState("fixture has invalid node address")
     }
     guard let deviceKeyHex = jsonString(fixture["device_key"]) else {
-        throw BluetoothProbeError.invalidState("fixture is missing device key")
+        throw AmaranHelperError.invalidState("fixture is missing device key")
     }
     guard let compositionHex = jsonString(fixture["composition_data"]) else {
-        throw BluetoothProbeError.invalidState("fixture is missing composition data")
+        throw AmaranHelperError.invalidState("fixture is missing composition data")
     }
 
     let composition = try NativeMeshConfig.compositionDataPage0(
         NativeMeshCrypto.bytes(hex: compositionHex)
     )
     guard let target = composition.firstVendorModelBindingTarget else {
-        throw BluetoothProbeError.invalidState("fixture composition data has no vendor model to bind")
+        throw AmaranHelperError.invalidState("fixture composition data has no vendor model to bind")
     }
     let elementAddress = destination + target.elementIndex
     guard (1...0x7fff).contains(elementAddress) else {
-        throw BluetoothProbeError.invalidState("computed element address is not a unicast address")
+        throw AmaranHelperError.invalidState("computed element address is not a unicast address")
     }
 
     var runtime = payload["runtime"] as? [String: Any] ?? [:]
@@ -1272,7 +1272,7 @@ func reserveNativeConfigModelAppBindProxyPdu(
 
     let sequenceNext = jsonInt(runtime["sequence_next"]) ?? 1
     guard (0...0x00ff_fffe).contains(sequenceNext) else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next is exhausted or invalid")
+        throw AmaranHelperError.invalidState("runtime sequence_next is exhausted or invalid")
     }
 
     let netKey = try NativeMeshCrypto.bytes(hex: netKeyHex)
@@ -1351,27 +1351,27 @@ func reserveNativeConfigNodeResetProxyPdu(
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
     guard let mesh = payload["mesh"] as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file is missing mesh data")
+        throw AmaranHelperError.invalidState("state file is missing mesh data")
     }
     guard let fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-        throw BluetoothProbeError.invalidState("state file is missing fixtures")
+        throw AmaranHelperError.invalidState("state file is missing fixtures")
     }
     guard let netKeyHex = jsonString(mesh["net_key"]), let appKeyHex = jsonString(mesh["app_key"]) else {
-        throw BluetoothProbeError.invalidState("state mesh data missing keys")
+        throw AmaranHelperError.invalidState("state mesh data missing keys")
     }
 
     let fixture = try selectFixture(fixtures, nodeID: nodeID)
     guard let destination = jsonInt(fixture["node_address"]), (1...0x7fff).contains(destination) else {
-        throw BluetoothProbeError.invalidState("fixture has invalid node address")
+        throw AmaranHelperError.invalidState("fixture has invalid node address")
     }
     guard let deviceKeyHex = jsonString(fixture["device_key"]) else {
-        throw BluetoothProbeError.invalidState("fixture is missing device key")
+        throw AmaranHelperError.invalidState("fixture is missing device key")
     }
 
     var runtime = payload["runtime"] as? [String: Any] ?? [:]
@@ -1384,7 +1384,7 @@ func reserveNativeConfigNodeResetProxyPdu(
 
     let sequenceNext = jsonInt(runtime["sequence_next"]) ?? 1
     guard (0...0x00ff_fffe).contains(sequenceNext) else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next is exhausted or invalid")
+        throw AmaranHelperError.invalidState("runtime sequence_next is exhausted or invalid")
     }
 
     let netKey = try NativeMeshCrypto.bytes(hex: netKeyHex)
@@ -1447,7 +1447,7 @@ func reserveNativeConfigNodeResetProxyPdu(
 func peekNativeSequenceNext(statePath: String) throws -> Int {
     let data = try Data(contentsOf: URL(fileURLWithPath: statePath))
     guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     let runtime = payload["runtime"] as? [String: Any] ?? [:]
     return jsonInt(runtime["sequence_next"]) ?? 1
@@ -1460,16 +1460,16 @@ func reserveNativeRuntimeSequence(
     let url = URL(fileURLWithPath: statePath)
     let data = try Data(contentsOf: url)
     guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-        throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+        throw AmaranHelperError.invalidState("state file must contain a JSON object")
     }
     guard jsonInt(payload["schema_version"]) == 1 else {
-        throw BluetoothProbeError.invalidState("unsupported state schema version")
+        throw AmaranHelperError.invalidState("unsupported state schema version")
     }
 
     var runtime = payload["runtime"] as? [String: Any] ?? [:]
     let sequenceNext = jsonInt(runtime["sequence_next"]) ?? 1
     guard (0...0x00ff_fffe).contains(sequenceNext) else {
-        throw BluetoothProbeError.invalidState("runtime sequence_next is exhausted or invalid")
+        throw AmaranHelperError.invalidState("runtime sequence_next is exhausted or invalid")
     }
 
     runtime["sequence_next"] = sequenceNext + 1
@@ -1492,22 +1492,22 @@ func makeNativeProvisioningRun(
     sourceAddress: UInt16 = 3
 ) throws -> NativeProvisioningRun {
     guard (0...255).contains(attentionDuration) else {
-        throw BluetoothProbeError.invalidState("attention duration must be 0..255")
+        throw AmaranHelperError.invalidState("attention duration must be 0..255")
     }
     if addToExistingState {
         let data: Data
         do {
             data = try Data(contentsOf: URL(fileURLWithPath: statePath))
         } catch {
-            throw BluetoothProbeError.invalidState("existing state file is required before adding a fixture")
+            throw AmaranHelperError.invalidState("existing state file is required before adding a fixture")
         }
         guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+            throw AmaranHelperError.invalidState("state file must contain a JSON object")
         }
         do {
             try NativeMeshState.validatePayload(payload)
         } catch {
-            throw BluetoothProbeError.invalidState("existing state is not usable for fixture add: \(error)")
+            throw AmaranHelperError.invalidState("existing state is not usable for fixture add: \(error)")
         }
         guard let mesh = payload["mesh"] as? [String: Any],
               let fixtures = payload["fixtures"] as? [[String: Any]],
@@ -1515,10 +1515,10 @@ func makeNativeProvisioningRun(
               let meshUUID = jsonString(mesh["uuid"]),
               let netKeyHex = jsonString(mesh["net_key"]),
               let appKeyHex = jsonString(mesh["app_key"]) else {
-            throw BluetoothProbeError.invalidState("existing state is missing mesh data")
+            throw AmaranHelperError.invalidState("existing state is missing mesh data")
         }
         guard let ivIndex = jsonInt(runtime["iv_index"]), (0...0xffff_ffff).contains(ivIndex) else {
-            throw BluetoothProbeError.invalidState("existing state runtime has invalid iv_index")
+            throw AmaranHelperError.invalidState("existing state runtime has invalid iv_index")
         }
         let nextAddress = try nextProvisioningUnicastAddress(fixtures: fixtures, runtime: runtime)
         let selectedSourceAddress = try nativeRuntimeSourceAddress(
@@ -1545,13 +1545,13 @@ func makeNativeProvisioningRun(
     }
 
     guard (1...0x7fff).contains(Int(unicastAddress)) else {
-        throw BluetoothProbeError.invalidState("provisioned node address must be a unicast address")
+        throw AmaranHelperError.invalidState("provisioned node address must be a unicast address")
     }
     guard (1...0x7fff).contains(Int(sourceAddress)), sourceAddress != unicastAddress else {
-        throw BluetoothProbeError.invalidState("provisioner source address must be a different unicast address")
+        throw AmaranHelperError.invalidState("provisioner source address must be a different unicast address")
     }
     guard !FileManager.default.fileExists(atPath: statePath) else {
-        throw BluetoothProbeError.invalidState(
+        throw AmaranHelperError.invalidState(
             "state file already exists; use add mode or set AMARAN_CLI_STATE_PATH before provisioning"
         )
     }
@@ -1607,7 +1607,7 @@ func meshRole(serviceUUIDs: [String]) -> [String] {
 }
 
 final class ProbeOptions {
-    var outputPath = "/tmp/amaran-bluetooth-probe.json"
+    var outputPath = "/tmp/amaran-helper.json"
     var timeout: TimeInterval = 10
     var connect = true
     var scanServices = [meshProxyService, meshProvisioningService]
@@ -1773,7 +1773,7 @@ final class ProbeOptions {
                     do {
                         let value = try bytes(hex: arguments[index + 1])
                         guard value.count == 16 else {
-                            throw BluetoothProbeError.invalidState("device UUID must be 16 bytes")
+                            throw AmaranHelperError.invalidState("device UUID must be 16 bytes")
                         }
                         joinCaptureDeviceUUID = value
                     } catch {
@@ -2105,7 +2105,7 @@ final class ProbeOptions {
         if joinCaptureRequested, configurationError == nil {
             do {
                 guard let joinCapturePath, !joinCapturePath.isEmpty else {
-                    throw BluetoothProbeError.invalidState("--join-capture requires --capture-state <file>")
+                    throw AmaranHelperError.invalidState("--join-capture requires --capture-state <file>")
                 }
                 let deviceUUID: [UInt8]
                 if let joinCaptureDeviceUUID {
@@ -2321,7 +2321,7 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
     private func handleRequestData(_ data: Data, connection: NWConnection) {
         do {
             guard let request = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw BluetoothProbeError.invalidState("daemon request must be a JSON object")
+                throw AmaranHelperError.invalidState("daemon request must be a JSON object")
             }
             try handleRequest(request, connection: connection)
         } catch {
@@ -2356,13 +2356,13 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
             commandQueue.append(command)
             processQueue()
         default:
-            throw BluetoothProbeError.invalidState("unknown daemon action: \(action)")
+            throw AmaranHelperError.invalidState("unknown daemon action: \(action)")
         }
     }
 
     private func makeCommand(action: String, request: [String: Any], connection: NWConnection) throws -> RuntimeDaemonCommand {
         guard let statePath = jsonString(request["state_path"]), !statePath.isEmpty else {
-            throw BluetoothProbeError.invalidState("daemon request missing state_path")
+            throw AmaranHelperError.invalidState("daemon request missing state_path")
         }
         let nodeID = jsonString(request["node_id"])
         let timeout = max(1.0, (request["timeout"] as? NSNumber)?.doubleValue ?? 10.0)
@@ -2370,7 +2370,7 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
         switch action {
         case "control":
             guard let spec = jsonString(request["spec"]) else {
-                throw BluetoothProbeError.invalidState("control request missing spec")
+                throw AmaranHelperError.invalidState("control request missing spec")
             }
             let prepared = try reserveNativeControlProxyPdu(
                 statePath: statePath,
@@ -2390,7 +2390,7 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
             )
         case "control_sequence":
             guard let specs = request["specs"] as? [String], !specs.isEmpty else {
-                throw BluetoothProbeError.invalidState("control_sequence request missing specs")
+                throw AmaranHelperError.invalidState("control_sequence request missing specs")
             }
             let commands = try specs.map { try NativeTelinkControlCommand.parse(spec: $0.lowercased()) }
             let prepared = try reserveNativeControlProxyPdus(statePath: statePath, nodeID: nodeID, commands: commands)
@@ -2419,7 +2419,7 @@ final class MeshRuntimeDaemon: NSObject, CBCentralManagerDelegate, CBPeripheralD
                 timeout: timeout
             )
         default:
-            throw BluetoothProbeError.invalidState("unsupported runtime daemon command: \(action)")
+            throw AmaranHelperError.invalidState("unsupported runtime daemon command: \(action)")
         }
     }
 
@@ -3118,7 +3118,7 @@ final class MeshJoinCapturePeripheral: NSObject, CBPeripheralManagerDelegate {
         ])
 
         if let failedErrorName = result.failedErrorName {
-            throw BluetoothProbeError.invalidState("provisioning failed: \(failedErrorName)")
+            throw AmaranHelperError.invalidState("provisioning failed: \(failedErrorName)")
         }
         if !result.outgoingPdus.isEmpty {
             try enqueueOutgoingProvisioningPdus(result.outgoingPdus)
@@ -3190,10 +3190,10 @@ final class MeshJoinCapturePeripheral: NSObject, CBPeripheralManagerDelegate {
 
     private func writeCaptureState() throws {
         guard !FileManager.default.fileExists(atPath: run.captureStatePath) else {
-            throw BluetoothProbeError.invalidState("capture state file already exists at \(run.captureStatePath)")
+            throw AmaranHelperError.invalidState("capture state file already exists at \(run.captureStatePath)")
         }
         guard let capturedData = session.capturedData, let deviceKey = session.deviceKey else {
-            throw BluetoothProbeError.invalidState("provisioning capture is incomplete")
+            throw AmaranHelperError.invalidState("provisioning capture is incomplete")
         }
         let now = isoTimestamp()
         let payload: [String: Any] = [
@@ -4117,7 +4117,7 @@ final class MeshGattProbe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
         decoded: inout [String: Any]
     ) throws {
         guard var session = liveProvisioningSession else {
-            throw BluetoothProbeError.invalidState("provisioning session is not started")
+            throw AmaranHelperError.invalidState("provisioning session is not started")
         }
 
         let result = try session.receive(provisioningPdu)
@@ -4155,16 +4155,16 @@ final class MeshGattProbe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
 
     private func writeLiveProvisioningState() throws {
         guard let run = options.nativeProvisioningRun else {
-            throw BluetoothProbeError.invalidState("provisioning run is not configured")
+            throw AmaranHelperError.invalidState("provisioning run is not configured")
         }
         guard let deviceUUID = liveProvisioningDeviceUUID else {
-            throw BluetoothProbeError.invalidState("provisioning device UUID is missing")
+            throw AmaranHelperError.invalidState("provisioning device UUID is missing")
         }
         guard let transcript = liveProvisioningSession?.transcript else {
-            throw BluetoothProbeError.invalidState("provisioning transcript is missing")
+            throw AmaranHelperError.invalidState("provisioning transcript is missing")
         }
         guard run.appendsToExistingState || !FileManager.default.fileExists(atPath: run.statePath) else {
-            throw BluetoothProbeError.invalidState("state file already exists; use add mode or set AMARAN_CLI_STATE_PATH before provisioning")
+            throw AmaranHelperError.invalidState("state file already exists; use add mode or set AMARAN_CLI_STATE_PATH before provisioning")
         }
 
         let now = isoTimestamp()
@@ -4185,7 +4185,7 @@ final class MeshGattProbe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
         if run.appendsToExistingState {
             let data = try Data(contentsOf: URL(fileURLWithPath: run.statePath))
             guard let existingPayload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+                throw AmaranHelperError.invalidState("state file must contain a JSON object")
             }
             payload = try NativeMeshState.appendingProvisionedFixturePayload(
                 existingPayload: existingPayload,
@@ -4380,7 +4380,7 @@ final class MeshGattProbe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
             return nil
         }
         guard let sequence = pending.segmentZeroSequence else {
-            throw BluetoothProbeError.invalidState("segmented access reassembly is missing segment zero")
+            throw AmaranHelperError.invalidState("segmented access reassembly is missing segment zero")
         }
         let reassembled = try NativeMeshCrypto.reassembleLowerTransportSegmentedAccessPdus(
             lowerTransportPdus: pending.orderedLowerTransportPdus
@@ -4557,10 +4557,10 @@ final class MeshGattProbe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
             let compositionPayload = Array(accessMessage.dropFirst())
             let data = try Data(contentsOf: URL(fileURLWithPath: options.statePath))
             guard var payload = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw BluetoothProbeError.invalidState("state file must contain a JSON object")
+                throw AmaranHelperError.invalidState("state file must contain a JSON object")
             }
             guard var fixtures = payload["fixtures"] as? [[String: Any]], !fixtures.isEmpty else {
-                throw BluetoothProbeError.invalidState("state file is missing fixtures")
+                throw AmaranHelperError.invalidState("state file is missing fixtures")
             }
             let targetAddress = options.nativeSendMetadata?["address"].flatMap(jsonInt)
             let fixtureIndex: Int
@@ -4570,7 +4570,7 @@ final class MeshGattProbe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
             } else if fixtures.count == 1 {
                 fixtureIndex = 0
             } else {
-                throw BluetoothProbeError.invalidState("multiple fixtures found; cannot store composition data")
+                throw AmaranHelperError.invalidState("multiple fixtures found; cannot store composition data")
             }
 
             let now = isoTimestamp()
@@ -5138,7 +5138,7 @@ final class MeshGattProbe: NSObject, CBCentralManagerDelegate, CBPeripheralDeleg
 }
 
 @main
-struct BluetoothProbeMain {
+struct AmaranHelperMain {
     static func main() {
         if CommandLine.arguments.contains("--daemon") {
             do {

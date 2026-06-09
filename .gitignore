@@ -12,8 +12,8 @@ state.json
 *.capture.json
 *.join.json
 amaran_probe_local_identity.h
-BluetoothProbe.app/Contents/MacOS/BluetoothProbe
-BluetoothProbe.app/Contents/_CodeSignature/
+AmaranHelper.app/Contents/MacOS/AmaranHelper
+AmaranHelper.app/Contents/_CodeSignature/
 .zephyrproject/
 .zephyr-build/
 .build/

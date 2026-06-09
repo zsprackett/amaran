@@ -1,5 +1,5 @@
 > **Swift CLI port (current):** The CLI is now a native Swift binary (SwiftPM:
-> `Sources/AmaranCore`, `AmaranCLI`, `amaran`, `BluetoothProbe`). `bin/amaran` is a
+> `Sources/AmaranCore`, `AmaranCLI`, `amaran`, `AmaranHelper`). `bin/amaran` is a
 > thin shim that builds and execs it; there is no Python. See `docs/swift-cli-port.md`.
 > Sections below that describe a zsh dispatcher or Python helpers predate the cutover.
 
@@ -103,20 +103,20 @@ Implementation notes:
   runtime commands. They require local CLI state and must not silently fall back
   to third-party app databases or helper bundles.
 - `status`, `identify`, `on`, `off`, `intensity`, `cct`, and `gm` should prefer the
-  auto-started local runtime daemon in `BluetoothProbe.app` when available.
+  auto-started local runtime daemon in `AmaranHelper.app` when available.
   The daemon listens on a `0700` Unix domain socket, writes non-secret metadata
   (`{pid, socket_path, started_at}`) under
   `~/Library/Application Support/amaran-cli/daemon.json`, keeps CoreBluetooth
   alive, and may reuse a Mesh Proxy connection for repeated commands. Set
   `AMARAN_DAEMON_DISABLE=1` to force the one-shot helper path.
 - The daemon emits structured logs through Apple unified logging (os.Logger,
-  subsystem `dev.local.bluetooth-probe`, categories `daemon`, `ble`, `command`).
+  subsystem `dev.local.amaran-helper`, categories `daemon`, `ble`, `command`).
   stderr is discarded when launched via `open -g`, so unified logging is the
   source of truth. View it with `./bin/amaran daemon logs` (live `log stream`)
   or `./bin/amaran daemon logs --since 1h` (`log show`). One-shot CLI invocations
   still write diagnostics to stderr, which the wrapper captures.
 - `./bin/amaran daemon install` registers a launchd LaunchAgent at
-  `~/Library/LaunchAgents/dev.local.bluetooth-probe.plist` (`RunAtLoad`,
+  `~/Library/LaunchAgents/dev.local.amaran-helper.plist` (`RunAtLoad`,
   `KeepAlive`, `ProcessType Background`) so the daemon runs at login and
   auto-restarts. It primes the Bluetooth TCC grant by launching the signed
   bundle once before bootstrapping launchd. `uninstall` bootouts and removes the
@@ -180,7 +180,7 @@ Implementation notes:
   DeviceKey traffic for those fixtures.
 - `./bin/amaran discover --range <spec>` probes candidate fixture unicast
   addresses on the current imported mesh using batched vendor status reads. The
-  normal repo path should launch `BluetoothProbe.app` once, reserve a sequence
+  normal repo path should launch `AmaranHelper.app` once, reserve a sequence
   block, send the whole range over one Mesh Proxy connection, and update state
   once. It may advance sequence counters. Without `--update-state`, discovered
   candidate fixtures must not remain in state; with `--update-state`,
@@ -213,7 +213,7 @@ Implementation notes:
   green-magenta correction. `list --json` may expose these non-secret
   capabilities so clients can clamp ranges and hide unsupported controls.
 - `./bin/amaran join-capture --output-state <capture.json>` is experimental.
-  It launches `BluetoothProbe.app` as a CoreBluetooth peripheral that advertises
+  It launches `AmaranHelper.app` as a CoreBluetooth peripheral that advertises
   Mesh Provisioning service `0x1827` and behaves as a dummy no-OOB provisionee.
   If Sidus Link Pro provisions it, the requested capture file receives the mesh
   NetKey plus the dummy node DeviceKey with `0600` permissions. The wrapper and
@@ -264,22 +264,22 @@ Implementation notes:
 Development notes:
 
 - Rebuild and sign the CoreBluetooth helper with
-  `npm run build:bluetooth-helper`. The default ad-hoc signature embeds a stable
-  local designated requirement for `dev.local.bluetooth-probe`; set
+  `npm run build:amaran-helper`. The default ad-hoc signature embeds a stable
+  local designated requirement for `dev.local.amaran-helper`; set
   `AMARAN_CODESIGN_IDENTITY` to use a real signing identity instead.
-- `./bin/amaran gatt-probe` launches `BluetoothProbe.app` and uses
+- `./bin/amaran gatt-probe` launches `AmaranHelper.app` and uses
   CoreBluetooth directly to discover Mesh Proxy/Provisioning GATT services.
-- `./bin/amaran provision-scan` launches `BluetoothProbe.app`, scans only
+- `./bin/amaran provision-scan` launches `AmaranHelper.app`, scans only
   Mesh Provisioning service `0x1827`, decodes safe unprovisioned service data
   such as device UUID, OOB info, and URI hash, and discovers Provisioning Data
   In/Out `0x2ADB`/`0x2ADC` when a device is connectable. It must not write
   provisioning PDUs or create keys.
-- `./bin/amaran provision-invite-test` launches `BluetoothProbe.app`,
+- `./bin/amaran provision-invite-test` launches `AmaranHelper.app`,
   scans Mesh Provisioning service `0x1827`, subscribes to Provisioning Data Out
   `0x2ADC`, writes only the initial Invite PDU to Provisioning Data In `0x2ADB`,
   and decodes the returned Capabilities PDU. It must not create keys, send
   Provisioning Data, or write CLI state.
-- `./bin/amaran provision-test` launches `BluetoothProbe.app`, scans Mesh
+- `./bin/amaran provision-test` launches `AmaranHelper.app`, scans Mesh
   Provisioning service `0x1827`, runs the no-OOB PB-GATT provisioning exchange,
   and writes CLI state only after Provisioning Complete. In create mode it
   generates fresh local NetKey/AppKey/provisioner material and refuses to start
@@ -295,15 +295,15 @@ Development notes:
   keys. This flow has been validated on the owned amaran 60x S after a Config
   Node Reset; broader fixture coverage is still unknown. (The old `pair-test`
   diagnostic alias was not carried into the Swift port.)
-- `./bin/amaran proxy-test` launches `BluetoothProbe.app`, subscribes to
+- `./bin/amaran proxy-test` launches `AmaranHelper.app`, subscribes to
   Mesh Proxy Data Out `0x2ADE`, and writes a public sample Proxy PDU to Mesh
   Proxy Data In `0x2ADD`. It does not use local mesh keys or control the light.
-- `./bin/amaran monitor` launches `BluetoothProbe.app`, subscribes to Mesh
+- `./bin/amaran monitor` launches `AmaranHelper.app`, subscribes to Mesh
   Proxy Data Out `0x2ADE`, writes a Proxy Configuration Set Filter Type
   message for an empty reject-list filter, and captures/decrypts forwarded
   runtime traffic for packet reverse engineering. It may include raw access
   parameters in JSON output, but must not print mesh/app/device keys.
-- `./bin/amaran sig-onoff-test <on|off>` launches `BluetoothProbe.app`,
+- `./bin/amaran sig-onoff-test <on|off>` launches `AmaranHelper.app`,
   reads CLI state, reserves and persists the next sequence number,
   matches the advertised Mesh Proxy Network ID, and writes a locally-keyed
   standard Generic OnOff Set Unacknowledged Proxy PDU. It should not change the
@@ -311,7 +311,7 @@ Development notes:
   path. JSON output may include decoded source/destination/opcode metadata, but
   must not include keys or raw access parameters.
 - `./bin/amaran control-test <on|off|intensity|cct|raw>` launches
-  `BluetoothProbe.app`, reads CLI state, reserves and persists the next
+  `AmaranHelper.app`, reads CLI state, reserves and persists the next
   sequence number, and writes a locally-keyed Telink `0x26` control Proxy
   PDU. The test command still requires `--intensity` for `cct`; it accepts
   optional `--gm <0-20>`. The stable `cct` command can preserve current
@@ -320,30 +320,30 @@ Development notes:
   engineering only. JSON output must not include keys or raw access parameters
   except for `monitor`, where raw access parameters are the requested
   diagnostic output.
-- `./bin/amaran status-test` launches `BluetoothProbe.app`, reads CLI
+- `./bin/amaran status-test` launches `AmaranHelper.app`, reads CLI
   state, reserves and persists the next sequence number, sends the
   Telink `0x26` read-data request from the Telink runtime source address, and
   decodes the returned CCT packet. JSON output may include safe
   transport/status metadata, but must not include keys.
 - `./bin/amaran config-composition-get-test` launches
-  `BluetoothProbe.app`, reads CLI state, reserves and persists one
+  `AmaranHelper.app`, reads CLI state, reserves and persists one
   sequence number, sends Config Composition Data Get with the fixture DeviceKey,
   reassembles the segmented DeviceKey response, and stores Composition Data Page
   0 back into CLI state. After a complete segmented response, it reserves one
   more sequence number and sends a lower-transport Segment
   Acknowledgment back to the fixture. It must not print keys.
-- `./bin/amaran config-appkey-get-test` launches `BluetoothProbe.app`,
+- `./bin/amaran config-appkey-get-test` launches `AmaranHelper.app`,
   reads CLI state, reserves and persists one sequence number,
   sends Config AppKey Get with the fixture DeviceKey, and decodes Config AppKey
   List as safe key-index metadata only. It must not print keys.
-- `./bin/amaran config-appkey-add-test` launches `BluetoothProbe.app`,
+- `./bin/amaran config-appkey-add-test` launches `AmaranHelper.app`,
   reads CLI state, reserves and persists the segmented sequence range,
   sends Config AppKey Add with the stored AppKey using the fixture
   DeviceKey from the CLI-owned source address, retries the already-reserved
   segmented Proxy PDUs while waiting for the lower transport Segment
   Acknowledgment, and reports safe aggregate ack metadata. It must not print
   keys.
-- `./bin/amaran config-model-app-bind-test` launches `BluetoothProbe.app`,
+- `./bin/amaran config-model-app-bind-test` launches `AmaranHelper.app`,
   parses stored Composition Data Page 0, selects the first vendor model, reserves
   and persists one sequence number, and sends Config Model App Bind for AppKey
   index 0 with the fixture DeviceKey. Config diagnostics may summarize DeviceKey
@@ -359,10 +359,10 @@ Development notes:
   data advertisement real fixtures normally use. Sidus Link Pro may require
   service data or fixture-specific identity filtering, so failure to appear in
   the iPad app is a known possible outcome.
-- `BluetoothProbe.app` has a top-level timeout guard so commands should
+- `AmaranHelper.app` has a top-level timeout guard so commands should
   return a safe CoreBluetooth state error instead of hanging if Bluetooth never
   becomes available.
-- `BluetoothProbe.app` can write a sequence of Proxy PDUs. The
+- `AmaranHelper.app` can write a sequence of Proxy PDUs. The
   provisioning test uses this for segmented Public Key and Provisioning Data
   writes. It can also reassemble segmented PB-GATT provisioning notifications
   into safe summaries and decode Mesh Proxy Segment Acknowledgment control
@@ -389,7 +389,7 @@ Development notes:
   Invite, Start, and provisioner Public Key, then disconnected immediately after
   the first 30-byte segmented DK Public Key notification.
 - If commands fail immediately with `central_state unauthorized`, macOS
-  Bluetooth permission for `BluetoothProbe.app` likely needs to be re-enabled.
+  Bluetooth permission for `AmaranHelper.app` likely needs to be re-enabled.
   Older ad-hoc builds used changing `cdhash` requirements, so an existing denied
   or stale permission entry may need to be reset once.
 - Mesh crypto, provisioning parser, access, transport, Network PDU, and Proxy
@@ -401,7 +401,7 @@ Development notes:
   access PDU assembly/reassembly, Composition Data Status decoding, Config
   AppKey List decoding, Segment Acknowledgment building/decoding, and fake-key
   `state.json` payload construction (`npm run test:mesh`):
-  `swiftc Sources/BluetoothProbe/native_mesh_crypto.swift Sources/BluetoothProbe/native_mesh_config.swift Sources/BluetoothProbe/native_mesh_provisioning.swift Sources/BluetoothProbe/native_mesh_state.swift Sources/BluetoothProbe/native_telink_control.swift tests/native_mesh_crypto_tests.swift -o /tmp/amaran-mesh-tests`
+  `swiftc Sources/AmaranHelper/native_mesh_crypto.swift Sources/AmaranHelper/native_mesh_config.swift Sources/AmaranHelper/native_mesh_provisioning.swift Sources/AmaranHelper/native_mesh_state.swift Sources/AmaranHelper/native_telink_control.swift tests/native_mesh_crypto_tests.swift -o /tmp/amaran-mesh-tests`
   then `/tmp/amaran-mesh-tests`.
 - Run `npm test` for the default local regression gate. It combines
   `test:core` (`swift test` — the AmaranCore/AmaranCLI unit suites, including
@@ -412,7 +412,7 @@ Development notes:
   segmented send path and waits for the expected Segment Acknowledgment.
 - In Codex, `./bin/amaran` may need elevated execution because it launches a
   macOS app bundle. In a normal terminal it should run directly.
-- One-shot helper commands launch `BluetoothProbe.app` with `open -n -W` so
+- One-shot helper commands launch `AmaranHelper.app` with `open -n -W` so
   they do not attach to the long-lived daemon instance and silently ignore the
   one-shot arguments.
 

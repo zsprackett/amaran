@@ -13,10 +13,10 @@ scope.
 - **Architecture.** A Swift CLI owns argument parsing, all `state.json`
   read/write/validate, output formatting, the launchd daemon management, and the
   daemon/app client. `bin/amaran` becomes a thin shim that `exec`s the built
-  binary (exporting `AMARAN_ROOT` so the binary can find `BluetoothProbe.app` and
+  binary (exporting `AMARAN_ROOT` so the binary can find `AmaranHelper.app` and
   the `scripts/` helpers).
 - **Shared core + Unix socket.** One SwiftPM package. An `AmaranCore` library is
-  shared by both the CLI and the `BluetoothProbe` app. The daemon transport moves
+  shared by both the CLI and the `AmaranHelper` app. The daemon transport moves
   from a TCP socket on `127.0.0.1` to a `0700` Unix domain socket. `daemon.json`
   shrinks to `{pid, socket_path, started_at}`.
 - **Port now.** `scene-store` and `discover-existing-mesh` move into Swift on
@@ -32,7 +32,7 @@ scope.
 - **Output parity.** `--json` field names and structure stay stable (the TUI and
   any scripts parse it). Human-readable text may be cleaned up.
 - **Build.** SwiftPM + swift-argument-parser (first Swift package dependency in
-  the repo). `scripts/build-bluetooth-probe` becomes `swift build` + bundle
+  the repo). `scripts/build-amaran-helper` becomes `swift build` + bundle
   assembly + codesign.
 - **TDD.** Every unit lands test-first.
 
@@ -51,9 +51,9 @@ Sources/
     Hex.swift            hex encode/decode
     DaemonProtocol.swift Codable request/response payloads
   amaran/                CLI executable (argument-parser, commands, daemon client)
-  BluetoothProbe/        app executable (existing native_*.swift refactored onto
+  AmaranHelper/        app executable (existing native_*.swift refactored onto
                          AmaranCore + Unix socket listener)
-scripts/build-bluetooth-probe   -> swift build + bundle + codesign
+scripts/build-amaran-helper   -> swift build + bundle + codesign
 bin/amaran                      -> shim: exec the built amaran binary
 ```
 
@@ -99,8 +99,8 @@ pretty-printed, sorted keys, trailing newline.
   `control_sequence {specs[],...}`, `status {...}`, `shutdown`.
 - Auto-start when no daemon: spawn the app in `--daemon` mode, poll ~5s.
 - Fallback when daemon disabled/unavailable: direct one-shot app launch.
-- launchd: label `dev.local.bluetooth-probe`, `bootstrap`/`bootout`/`enable`,
-  logs via `log show/stream --predicate 'subsystem == "dev.local.bluetooth-probe"'`.
+- launchd: label `dev.local.amaran-helper`, `bootstrap`/`bootout`/`enable`,
+  logs via `log show/stream --predicate 'subsystem == "dev.local.amaran-helper"'`.
 
 ## Command coverage
 
@@ -115,9 +115,9 @@ pretty-printed, sorted keys, trailing newline.
 
 1. `Package.swift` + `AmaranCore`: state model, store, validation, control spec,
    capabilities, composition, hex. Unit tests. **(done — 59 tests, 8 suites)**
-2. **Build consolidation (done).** App sources moved to `Sources/BluetoothProbe`;
-   added a SwiftPM `BluetoothProbe` executable target depending on `AmaranCore`
-   (Swift 5 language mode for the legacy native code); `build-bluetooth-probe`
+2. **Build consolidation (done).** App sources moved to `Sources/AmaranHelper`;
+   added a SwiftPM `AmaranHelper` executable target depending on `AmaranCore`
+   (Swift 5 language mode for the legacy native code); `build-amaran-helper`
    now does `swift build` + copy into the signed `.app` + codesign (bundle id and
    ad-hoc designated requirement preserved so TCC permission persists). No runtime
    behavior change. `npm run test:mesh` repathed; all tests green.
