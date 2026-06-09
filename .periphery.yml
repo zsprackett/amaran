@@ -1,0 +1,13 @@
+# Periphery configuration.
+#
+# The native Bluetooth Mesh sources (Sources/AmaranHelper/native_mesh_*.swift)
+# are exercised by the standalone crypto/vector suite that scripts/test-mesh
+# compiles directly with `swiftc` (tests/native_mesh_crypto_tests*.swift). Those
+# test files are NOT part of any SwiftPM target, so Periphery never indexes them
+# and reports their decode-result fields and helpers as unused/assign-only. They
+# are false positives: e.g. nid/nonce/netMic/transMic, acknowledges(segment:),
+# vendorAccessMessage, and littleEndianBytes are all read by the standalone
+# tests or other Sources. Excluding these files from the report keeps Periphery
+# a trustworthy signal for the rest of the package.
+report_exclude:
+  - "**/Sources/AmaranHelper/native_mesh_*.swift"
