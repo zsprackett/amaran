@@ -1,6 +1,5 @@
 import Foundation
 import Testing
-import AmaranCore
 @testable import AmaranCLI
 
 struct DoctorReportTests {

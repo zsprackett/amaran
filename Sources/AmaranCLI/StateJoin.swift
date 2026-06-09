@@ -103,7 +103,7 @@ public enum StateJoin {
             let address = try intInRange(
                 fixture["node_address"] ?? fixture["address"], 1, 0x7FFF,
                 "fixture #\(index) node_address")
-            let elementCount = try elementCountFor(fixture, index: index)
+            let elementCount = try elementCountFor(fixture)
             try reserveElementAddresses(
                 address: address, elementCount: elementCount, index: index, occupied: &occupied)
             fixtures.append(try makeFixture(fixture, address: address, elementCount: elementCount,
@@ -229,7 +229,7 @@ public enum StateJoin {
 
     // MARK: - Field helpers
 
-    private static func elementCountFor(_ fixture: [String: JSONValue], index: Int) throws -> Int {
+    private static func elementCountFor(_ fixture: [String: JSONValue]) throws -> Int {
         guard let value = fixture["element_count"], !isEmpty(value) else { return 1 }
         return try intInRange(value, 1, 255, "fixture element_count")
     }

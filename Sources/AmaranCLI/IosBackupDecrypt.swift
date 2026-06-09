@@ -1,7 +1,6 @@
 import Foundation
 import CommonCrypto
 import SQLite3
-import AmaranCore
 
 /// Native iOS encrypted-backup decryption (replaces the `iphone-backup-decrypt`
 /// Python helper). Implements the documented backup crypto: keybag parse,

@@ -60,8 +60,4 @@ public struct CLIEnvironment {
     public func daemonClient() -> DaemonClient {
         DaemonClient(metadataPath: daemonMetadataPath, appPath: appPath)
     }
-
-    /// Repo root (parent of AmaranHelper.app) and the helper-script directory.
-    public var rootDir: String { (appPath as NSString).deletingLastPathComponent }
-    public func scriptPath(_ name: String) -> String { rootDir + "/scripts/" + name }
 }
